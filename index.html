@@ -115,6 +115,7 @@
           <option value="32">とても小さい(荒くなる)</option>
         </select></div>
       <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="audio" checked> 音も残す</label>
+      <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="merge" checked> 範囲をつなげて、1つのファイルにする</label>
     </div>
     <div class="row">
       <div class="field grow"><label for="outDir">保存先のフォルダ</label>
@@ -235,9 +236,12 @@
       tr.lastChild.append(go, ' ', del);
       $('segs').appendChild(tr);
     });
-    $('total').textContent = segs.length ? `合計 ${fmt(sum)}(元の動画の ${(sum / info.duration * 100).toFixed(1)}%)。範囲ごとに、別のファイルとして保存されます。` : '';
+    const joined = $('merge').checked && segs.length > 1;
+    $('total').textContent = segs.length ? `合計 ${fmt(sum)}(元の動画の ${(sum / info.duration * 100).toFixed(1)}%)。${joined ? '上から順につなげて、1つのファイルで保存されます。' : '範囲ごとに、別のファイルとして保存されます。'}` : '';
+    $('merge').disabled = segs.length < 2;
     $('run').disabled = !segs.length;
   }
+  $('merge').onchange = renderSegs;
 
   $('pickDir').onclick = async () => {
     try { const r = await api('/api/pickfolder', {}); if (r.dir) $('outDir').value = r.dir; } catch (e) { $('runErr').textContent = e.message; }
@@ -248,7 +252,7 @@
     try {
       await api('/api/run', {
         segments: segs, height: Number($('height').value), crf: Number($('crf').value),
-        audio: $('audio').checked, outDir: $('outDir').value.trim(),
+        audio: $('audio').checked, merge: $('merge').checked, outDir: $('outDir').value.trim(),
       });
       poll();
     } catch (e) { $('runErr').textContent = e.message; }
@@ -266,7 +270,7 @@
       const done = s.running ? s.index : s.results.length;
       const pct = s.running ? s.percent : (s.error ? s.percent : 100);
       $('progBar').style.width = pct + '%';
-      $('progText').textContent = s.running ? `${s.index + 1} / ${s.total} 本目を書き出し中… ${Math.floor(s.percent)}%` : (s.error ? '' : '完了しました');
+      $('progText').textContent = s.running ? (s.merging ? '1つのファイルにつなげています…' : `${s.index + 1} / ${s.total} 本目を書き出し中… ${Math.floor(s.percent)}%`) : (s.error ? '' : '完了しました');
       $('res').innerHTML = '';
       s.results.forEach((r) => {
         const tr = document.createElement('tr');
@@ -284,7 +288,7 @@
         if (s.error) $('runErr').textContent = s.error;
         if (s.results.length) {
           const out = s.results.reduce((a, r) => a + r.size, 0);
-          const srcPart = s.results.reduce((a, r) => a + (r.end - r.start), 0) / info.duration * info.size;
+          const srcPart = s.results.reduce((a, r) => a + r.dur, 0) / info.duration * info.size;
           $('resSum').textContent = `書き出した合計: ${bytes(out)}。元の動画の同じ長さ分(約 ${bytes(srcPart)})の ${(out / srcPart * 100).toFixed(0)}% になりました。元の動画全体(${bytes(info.size)})の ${(out / info.size * 100).toFixed(1)}% です。`;
         }
       }

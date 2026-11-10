@@ -99,7 +99,7 @@ async function probe(file) {
 
 // いま選んでいる動画と、書き出しの状況
 const state = { info: null };
-const job = { running: false, cancel: false, total: 0, index: 0, percent: 0, results: [], error: null, child: null };
+const job = { running: false, cancel: false, merging: false, total: 0, index: 0, percent: 0, results: [], error: null, child: null };
 let lastPing = Date.now();
 
 function uniquePath(p) {
@@ -154,25 +154,60 @@ function encodeOne(src, seg, opt, outFile) {
   });
 }
 
+// 同じ設定で書き出した範囲どうしを、作り直さずにそのままつなげる(速い)
+function concatSegments(dir, count, outFile) {
+  return new Promise((resolve, reject) => {
+    const list = Array.from({ length: count }, (_, i) => `file 'seg${i}.mp4'`).join('\n') + '\n';
+    fs.writeFileSync(path.join(dir, 'list.txt'), list);
+    const args = ['-hide_banner', '-y', '-f', 'concat', '-i', 'list.txt', '-c', 'copy', '-movflags', '+faststart', outFile];
+    const child = spawn(FFMPEG, args, { cwd: dir, windowsHide: true });
+    job.child = child;
+    let tail = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (d) => (tail = (tail + d).slice(-600)));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      job.child = null;
+      if (job.cancel) return reject(new Error('中止しました'));
+      if (code !== 0) return reject(new Error('つなげるのに失敗しました: ' + tail.trim().split('\n').pop()));
+      resolve();
+    });
+  });
+}
+
 async function runJob(body) {
   const info = state.info;
-  Object.assign(job, { running: true, cancel: false, total: body.segments.length, index: 0, percent: 0, results: [], error: null });
+  const merge = !!body.merge && body.segments.length > 1;
+  Object.assign(job, { running: true, cancel: false, total: body.segments.length, index: 0, percent: 0, merging: false, results: [], error: null });
+  let work = null;
   try {
     fs.mkdirSync(body.outDir, { recursive: true });
     const base = path.parse(info.file).name;
     const tag = body.height > 0 ? `_${body.height}p` : '';
+    if (merge) work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
     for (let i = 0; i < body.segments.length; i++) {
       const seg = body.segments[i];
       job.index = i;
       job.percent = 0;
-      const out = uniquePath(path.join(body.outDir, `${base}_${stamp(seg.start)}-${stamp(seg.end)}${tag}.mp4`));
+      const out = merge ? path.join(work, `seg${i}.mp4`) : uniquePath(path.join(body.outDir, `${base}_${stamp(seg.start)}-${stamp(seg.end)}${tag}.mp4`));
       await encodeOne(info.file, seg, body, out);
-      job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, start: seg.start, end: seg.end });
+      if (!merge) job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: seg.end - seg.start });
       job.percent = 100;
+    }
+    if (merge) {
+      job.merging = true;
+      const total = body.segments.reduce((a, s) => a + (s.end - s.start), 0);
+      const out = uniquePath(path.join(body.outDir, `${base}_結合${body.segments.length}か所${tag}.mp4`));
+      await concatSegments(work, body.segments.length, out);
+      job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: total });
     }
   } catch (e) {
     job.error = e.message;
   } finally {
+    if (work) {
+      try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* 残っても害はない */ }
+    }
+    job.merging = false;
     job.running = false;
   }
 }
@@ -263,7 +298,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/video') return serveVideo(req, res);
     if (req.method === 'GET' && url.pathname === '/api/status')
-      return sendJson(res, 200, { running: job.running, total: job.total, index: job.index, percent: job.percent, results: job.results, error: job.error });
+      return sendJson(res, 200, { running: job.running, merging: job.merging, total: job.total, index: job.index, percent: job.percent, results: job.results, error: job.error });
     if (req.method === 'GET' && url.pathname === '/api/state')
       return sendJson(res, 200, { info: state.info, ffmpeg: !!FFMPEG && !!FFPROBE });
 
