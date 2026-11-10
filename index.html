@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>動画カット・圧縮</title>
+<style>
+  :root {
+    --bg: #f4f6f4; --card: #ffffff; --text: #1d2a21; --sub: #5d6b61; --line: #d9e0da;
+    --accent: #1f7a46; --accent-text: #ffffff; --accent-soft: #e3f2e8; --warn: #b3261e; --bar: #dfe7e1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141a16; --card: #1d2620; --text: #e8efe9; --sub: #9db0a2; --line: #33413a;
+      --accent: #4cc27f; --accent-text: #0c1a11; --accent-soft: #23352a; --warn: #ff8a80; --bar: #2c3a31;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 "Yu Gothic UI", "Meiryo UI", sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 20px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lead { color: var(--sub); margin: 0 0 20px; font-size: 14px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  h2 span { display: inline-block; background: var(--accent); color: var(--accent-text); border-radius: 50%; width: 24px; height: 24px; text-align: center; font-size: 14px; line-height: 24px; margin-right: 8px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: bold; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input[type=text], select { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--card); color: var(--text); min-width: 0; }
+  input[type=text].time { width: 112px; text-align: center; font-variant-numeric: tabular-nums; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  .grow { flex: 1; }
+  .info { background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; font-size: 14px; margin-top: 8px; }
+  video { width: 100%; max-height: 52vh; background: #000; border-radius: 8px; }
+  .pos { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: bold; margin: 0 8px; }
+  .hint { color: var(--sub); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; font-variant-numeric: tabular-nums; }
+  .bar { height: 14px; background: var(--bar); border-radius: 7px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .err { color: var(--warn); font-weight: bold; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 13px; color: var(--sub); }
+  @media (max-width: 560px) { .pos { font-size: 18px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>動画カット・圧縮</h1>
+  <p class="lead">長い動画から必要な部分だけを切り出して、解像度と画質を下げて小さく保存します。元の動画は、そのまま残ります。</p>
+
+  <section>
+    <h2><span>1</span>動画を選ぶ</h2>
+    <div class="row">
+      <button class="primary" id="pick">動画を選ぶ…</button>
+      <input type="text" id="pathInput" class="grow" placeholder="またはファイルの場所を貼り付けて Enter">
+    </div>
+    <div class="info" id="info" hidden></div>
+    <div class="err" id="loadErr"></div>
+  </section>
+
+  <section id="editor" hidden>
+    <h2><span>2</span>残したい範囲を決める</h2>
+    <video id="v" controls preload="metadata"></video>
+    <p class="hint" id="noPlay" hidden>この動画は、ブラウザでは再生できないようです。下の時間の欄に、直接入力してください。</p>
+    <div class="row">
+      <button data-seek="-600">−10分</button>
+      <button data-seek="-60">−1分</button>
+      <button data-seek="-10">−10秒</button>
+      <button data-seek="-1">−1秒</button>
+      <span class="pos" id="pos">0:00:00</span>
+      <button data-seek="1">+1秒</button>
+      <button data-seek="10">+10秒</button>
+      <button data-seek="60">+1分</button>
+      <button data-seek="600">+10分</button>
+    </div>
+    <div class="row">
+      <button id="setStart">ここを開始にする (I)</button>
+      <input type="text" class="time" id="startT" value="0:00:00" aria-label="開始">
+      <span>〜</span>
+      <input type="text" class="time" id="endT" value="" aria-label="終了">
+      <button id="setEnd">ここを終了にする (O)</button>
+      <button class="primary" id="add">この範囲を追加</button>
+    </div>
+    <p class="hint">キー操作: ← → で1秒、Shift を押しながらで10秒動かせます。スペースで再生・停止。</p>
+  </section>
+
+  <section id="listSec" hidden>
+    <h2><span>3</span>残す範囲の一覧</h2>
+    <table>
+      <thead><tr><th>#</th><th>開始</th><th>終了</th><th>長さ</th><th></th></tr></thead>
+      <tbody id="segs"></tbody>
+    </table>
+    <p class="hint" id="total"></p>
+  </section>
+
+  <section id="outSec" hidden>
+    <h2><span>4</span>小さくして書き出す</h2>
+    <div class="row">
+      <div class="field"><label for="height">解像度(縦の画素数)</label>
+        <select id="height">
+          <option value="0">元のまま</option>
+          <option value="1080">1080p</option>
+          <option value="720" selected>720p(おすすめ)</option>
+          <option value="540">540p</option>
+          <option value="480">480p</option>
+          <option value="360">360p</option>
+        </select></div>
+      <div class="field"><label for="crf">画質(小さいほど、ファイルが小さくなります)</label>
+        <select id="crf">
+          <option value="22">高画質(あまり小さくならない)</option>
+          <option value="26" selected>ふつう(おすすめ)</option>
+          <option value="29">小さめ</option>
+          <option value="32">とても小さい(荒くなる)</option>
+        </select></div>
+      <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="audio" checked> 音も残す</label>
+    </div>
+    <div class="row">
+      <div class="field grow"><label for="outDir">保存先のフォルダ</label>
+        <div class="row" style="margin:0"><input type="text" id="outDir" class="grow"><button id="pickDir">変更…</button></div></div>
+    </div>
+    <div class="row">
+      <button class="primary" id="run">書き出す</button>
+      <button id="cancel" hidden>中止</button>
+    </div>
+    <div id="prog" hidden>
+      <p id="progText"></p>
+      <div class="bar"><div id="progBar"></div></div>
+    </div>
+    <div class="err" id="runErr"></div>
+    <table id="resTbl" hidden>
+      <thead><tr><th>書き出したファイル</th><th>大きさ</th><th></th></tr></thead>
+      <tbody id="res"></tbody>
+    </table>
+    <p class="hint" id="resSum"></p>
+  </section>
+</main>
+
+<script>
+(() => {
+  const token = new URLSearchParams(location.search).get('t') || '';
+  const $ = (id) => document.getElementById(id);
+  const v = $('v');
+  let info = null;
+  let segs = [];
+  let timer = null;
+
+  const api = async (path, body) => {
+    const r = await fetch(path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { 'x-token': token, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || '失敗しました');
+    return j;
+  };
+  const fmt = (s) => {
+    s = Math.max(0, s);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = Math.floor(s % 60);
+    return `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}`;
+  };
+  const parse = (t) => {
+    const p = String(t).trim().split(':').map(Number);
+    if (!p.length || p.length > 3 || p.some((n) => !Number.isFinite(n) || n < 0)) return NaN;
+    return p.reduce((a, n) => a * 60 + n, 0);
+  };
+  const bytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : (n / 1e6).toFixed(1) + ' MB');
+
+  setInterval(() => api('/api/ping', {}).catch(() => {}), 5000);
+  api('/api/ping', {}).catch(() => {});
+
+  function loaded(i) {
+    info = i;
+    segs = [];
+    $('loadErr').textContent = '';
+    $('info').hidden = false;
+    $('info').textContent = `${i.name} / 長さ ${fmt(i.duration)} / ${i.width}×${i.height} / ${i.vcodec} / ${bytes(i.size)}`;
+    $('pathInput').value = i.file;
+    $('noPlay').hidden = true;
+    v.src = `/video?t=${token}`;
+    $('startT').value = '0:00:00';
+    $('endT').value = fmt(i.duration);
+    $('editor').hidden = false;
+    $('outSec').hidden = false;
+    $('outDir').value = i.file.replace(/[\\/][^\\/]+$/, '');
+    $('resTbl').hidden = true;
+    $('resSum').textContent = '';
+    renderSegs();
+  }
+  v.addEventListener('error', () => ($('noPlay').hidden = false));
+  v.addEventListener('timeupdate', () => ($('pos').textContent = fmt(v.currentTime)));
+  v.addEventListener('seeked', () => ($('pos').textContent = fmt(v.currentTime)));
+
+  $('pick').onclick = async () => {
+    $('pick').disabled = true;
+    try {
+      const r = await api('/api/pick', {});
+      if (r.info) loaded(r.info);
+    } catch (e) { $('loadErr').textContent = e.message; }
+    $('pick').disabled = false;
+  };
+  $('pathInput').addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter') return;
+    try { loaded((await api('/api/setpath', { path: $('pathInput').value })).info); }
+    catch (err) { $('loadErr').textContent = err.message; }
+  });
+
+  document.querySelectorAll('[data-seek]').forEach((b) => (b.onclick = () => {
+    v.currentTime = Math.min(info.duration, Math.max(0, v.currentTime + Number(b.dataset.seek)));
+  }));
+  $('setStart').onclick = () => ($('startT').value = fmt(Math.floor(v.currentTime)));
+  $('setEnd').onclick = () => ($('endT').value = fmt(Math.ceil(v.currentTime)));
+  $('add').onclick = () => {
+    const s = parse($('startT').value), e = parse($('endT').value);
+    if (!(s >= 0 && e > s)) return alert('開始より後の終了時間を入れてください');
+    if (e > info.duration + 1) return alert('終了が、動画の長さを超えています');
+    segs.push({ start: s, end: Math.min(e, info.duration) });
+    segs.sort((a, b) => a.start - b.start);
+    $('startT').value = fmt(e);
+    $('endT').value = fmt(info.duration);
+    renderSegs();
+  };
+  function renderSegs() {
+    $('listSec').hidden = !segs.length;
+    $('segs').innerHTML = '';
+    let sum = 0;
+    segs.forEach((s, i) => {
+      sum += s.end - s.start;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i + 1}</td><td>${fmt(s.start)}</td><td>${fmt(s.end)}</td><td>${fmt(s.end - s.start)}</td><td></td>`;
+      const go = document.createElement('button'); go.textContent = '見る'; go.onclick = () => (v.currentTime = s.start);
+      const del = document.createElement('button'); del.textContent = '削除'; del.onclick = () => { segs.splice(i, 1); renderSegs(); };
+      tr.lastChild.append(go, ' ', del);
+      $('segs').appendChild(tr);
+    });
+    $('total').textContent = segs.length ? `合計 ${fmt(sum)}(元の動画の ${(sum / info.duration * 100).toFixed(1)}%)。範囲ごとに、別のファイルとして保存されます。` : '';
+    $('run').disabled = !segs.length;
+  }
+
+  $('pickDir').onclick = async () => {
+    try { const r = await api('/api/pickfolder', {}); if (r.dir) $('outDir').value = r.dir; } catch (e) { $('runErr').textContent = e.message; }
+  };
+  $('run').onclick = async () => {
+    $('runErr').textContent = '';
+    $('resTbl').hidden = true; $('resSum').textContent = '';
+    try {
+      await api('/api/run', {
+        segments: segs, height: Number($('height').value), crf: Number($('crf').value),
+        audio: $('audio').checked, outDir: $('outDir').value.trim(),
+      });
+      poll();
+    } catch (e) { $('runErr').textContent = e.message; }
+  };
+  $('cancel').onclick = () => api('/api/cancel', {});
+
+  function poll() {
+    clearInterval(timer);
+    timer = setInterval(async () => {
+      let s;
+      try { s = await api('/api/status'); } catch { return; }
+      $('prog').hidden = false;
+      $('cancel').hidden = !s.running;
+      $('run').disabled = s.running;
+      const done = s.running ? s.index : s.results.length;
+      const pct = s.running ? s.percent : (s.error ? s.percent : 100);
+      $('progBar').style.width = pct + '%';
+      $('progText').textContent = s.running ? `${s.index + 1} / ${s.total} 本目を書き出し中… ${Math.floor(s.percent)}%` : (s.error ? '' : '完了しました');
+      $('res').innerHTML = '';
+      s.results.forEach((r) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td></td><td>${bytes(r.size)}</td><td></td>`;
+        tr.firstChild.textContent = r.name;
+        const b = document.createElement('button'); b.textContent = 'フォルダで見る';
+        b.onclick = () => api('/api/reveal', { file: r.file }).catch((e) => ($('runErr').textContent = e.message));
+        tr.lastChild.appendChild(b);
+        $('res').appendChild(tr);
+      });
+      $('resTbl').hidden = !s.results.length;
+      if (!s.running) {
+        clearInterval(timer);
+        $('run').disabled = !segs.length;
+        if (s.error) $('runErr').textContent = s.error;
+        if (s.results.length) {
+          const out = s.results.reduce((a, r) => a + r.size, 0);
+          const srcPart = s.results.reduce((a, r) => a + (r.end - r.start), 0) / info.duration * info.size;
+          $('resSum').textContent = `書き出した合計: ${bytes(out)}。元の動画の同じ長さ分(約 ${bytes(srcPart)})の ${(out / srcPart * 100).toFixed(0)}% になりました。元の動画全体(${bytes(info.size)})の ${(out / info.size * 100).toFixed(1)}% です。`;
+        }
+      }
+    }, 700);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (!info || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox') return;
+    const k = e.key;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      e.preventDefault();
+      v.currentTime = Math.min(info.duration, Math.max(0, v.currentTime + (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 10 : 1)));
+    } else if (k === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+    else if (k === 'i' || k === 'I') $('setStart').click();
+    else if (k === 'o' || k === 'O') $('setEnd').click();
+  });
+
+  api('/api/state').then((s) => { if (!s.ffmpeg) $('loadErr').textContent = 'ffmpeg が見つかりません。'; if (s.info) loaded(s.info); }).catch(() => {});
+})();
+</script>
+</body>
+</html>
