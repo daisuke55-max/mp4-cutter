@@ -114,6 +114,12 @@
           <option value="29">小さめ</option>
           <option value="32">とても小さい(荒くなる)</option>
         </select></div>
+      <div class="field"><label for="speed">処理の速さ</label>
+        <select id="speed">
+          <option value="fast" selected>速い(ファイルは、少し大きくなる)</option>
+          <option value="normal">ふつう</option>
+          <option value="slow">じっくり(時間がかかるが、小さくなる)</option>
+        </select></div>
       <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="audio" checked> 音も残す</label>
       <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="merge" checked> 範囲をつなげて、1つのファイルにする</label>
     </div>
@@ -153,6 +159,7 @@
       <div class="row">
         <div class="field"><label for="jHeight">解像度(縦の画素数)</label><select id="jHeight"></select></div>
         <div class="field"><label for="jCrf">画質(小さいほど、ファイルが小さくなります)</label><select id="jCrf"></select></div>
+        <div class="field"><label for="jSpeed">処理の速さ</label><select id="jSpeed"></select></div>
         <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="jAudio" checked> 音も残す</label>
       </div>
       <div class="row">
@@ -283,20 +290,22 @@
   // 解像度・画質・音・結合の選択は、変えるたびに覚えておく
   const saveSettings = () => api('/api/settings', {
     height: Number($('height').value), crf: Number($('crf').value),
-    audio: $('audio').checked, merge: $('merge').checked,
+    audio: $('audio').checked, merge: $('merge').checked, speed: $('speed').value,
   }).catch(() => {});
   const applySettings = (s) => {
     if (!s) return;
     if ([...$('height').options].some((o) => o.value === String(s.height))) $('height').value = String(s.height);
     if ([...$('crf').options].some((o) => o.value === String(s.crf))) $('crf').value = String(s.crf);
+    if ([...$('speed').options].some((o) => o.value === s.speed)) $('speed').value = s.speed;
     $('audio').checked = s.audio;
     $('merge').checked = s.merge;
     $('jHeight').value = $('height').value;
     $('jCrf').value = $('crf').value;
+    $('jSpeed').value = $('speed').value;
     $('jAudio').checked = $('audio').checked;
     renderSegs();
   };
-  ['height', 'crf', 'audio'].forEach((id) => $(id).addEventListener('change', saveSettings));
+  ['height', 'crf', 'speed', 'audio'].forEach((id) => $(id).addEventListener('change', saveSettings));
   $('merge').onchange = () => { renderSegs(); saveSettings(); };
 
   $('pickDir').onclick = async () => {
@@ -308,7 +317,7 @@
     try {
       await api('/api/run', {
         segments: segs, height: Number($('height').value), crf: Number($('crf').value),
-        audio: $('audio').checked, merge: $('merge').checked, outDir: $('outDir').value.trim(),
+        audio: $('audio').checked, merge: $('merge').checked, speed: $('speed').value, outDir: $('outDir').value.trim(),
       });
       poll(P_CUT);
     } catch (e) { $('runErr').textContent = e.message; }
@@ -360,6 +369,7 @@
   let jList = [];
   $('jHeight').innerHTML = $('height').innerHTML;
   $('jCrf').innerHTML = $('crf').innerHTML;
+  $('jSpeed').innerHTML = $('speed').innerHTML;
   const P_JOIN = {
     prog: 'jProg', cancel: 'jCancel', run: 'jRun', bar: 'jProgBar', text: 'jProgText', res: 'jRes', tbl: 'jResTbl', err: 'jErr',
     finish(s) {
@@ -414,14 +424,14 @@
     try {
       await api('/api/joinrun', {
         files: jList.map((f) => f.file), height: Number($('jHeight').value), crf: Number($('jCrf').value),
-        audio: $('jAudio').checked, outDir: $('jOutDir').value.trim(),
+        audio: $('jAudio').checked, speed: $('jSpeed').value, outDir: $('jOutDir').value.trim(),
       });
       poll(P_JOIN);
     } catch (e) { $('jErr').textContent = e.message; }
   };
   $('jCancel').onclick = () => api('/api/cancel', {});
   // 解像度・画質・音は、上の書き出しと同じ設定を使う(どちらで変えても、そろえて覚える)
-  [['height', 'jHeight'], ['crf', 'jCrf'], ['audio', 'jAudio']].forEach(([a, b]) => {
+  [['height', 'jHeight'], ['crf', 'jCrf'], ['speed', 'jSpeed'], ['audio', 'jAudio']].forEach(([a, b]) => {
     const copy = (from, to) => () => { if (from.type === 'checkbox') to.checked = from.checked; else to.value = from.value; };
     $(a).addEventListener('change', copy($(a), $(b)));
     $(b).addEventListener('change', () => { copy($(b), $(a))(); saveSettings(); });

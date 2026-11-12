@@ -111,7 +111,9 @@ async function probe(file) {
 // 解像度・画質などの選択を覚えておく(次に起動したときも、同じ設定で始まる)。
 // 保存先は、ツールのフォルダの外(AppData)。ツールを入れ直しても消えない。
 const HEIGHTS = [0, 360, 480, 540, 720, 1080];
-const DEFAULT_SETTINGS = { height: 720, crf: 26, audio: true, merge: true };
+// 処理の速さ: 速いほど早く終わるが、同じ画質でも、ファイルが少し大きくなる
+const PRESETS = { fast: 'veryfast', normal: 'medium', slow: 'slow' };
+const DEFAULT_SETTINGS = { height: 720, crf: 26, audio: true, merge: true, speed: 'fast' };
 const SETTINGS_FILE = path.join(process.env.APPDATA || __dirname, 'mp4-cutter', 'settings.json');
 function cleanSettings(s) {
   const o = { ...DEFAULT_SETTINGS };
@@ -119,6 +121,7 @@ function cleanSettings(s) {
   if (s && Number.isInteger(s.crf) && s.crf >= 16 && s.crf <= 40) o.crf = s.crf;
   if (s && typeof s.audio === 'boolean') o.audio = s.audio;
   if (s && typeof s.merge === 'boolean') o.merge = s.merge;
+  if (s && Object.hasOwn(PRESETS, s.speed)) o.speed = s.speed;
   return o;
 }
 function loadSettings() {
@@ -153,6 +156,10 @@ const stamp = (sec) => {
   const p = (n) => String(n).padStart(2, '0');
   return `${p(Math.floor(s / 3600))}h${p(Math.floor((s % 3600) / 60))}m${p(s % 60)}s`;
 };
+
+function presetOf(opt) {
+  return PRESETS[opt.speed] || PRESETS[DEFAULT_SETTINGS.speed];
+}
 
 // ffmpeg を動かして、進み具合(job.percent)を更新する。dur は、書き出す長さ(秒)
 function runFfmpeg(args, dur, failMsg) {
@@ -189,7 +196,7 @@ function encodeOne(src, seg, opt, outFile) {
   const dur = seg.end - seg.start;
   const args = ['-hide_banner', '-y', '-ss', String(seg.start), '-i', src, '-t', String(dur), '-map', '0:v:0', '-map', '0:a:0?'];
   if (opt.height > 0) args.push('-vf', `scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
-  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
+  args.push('-c:v', 'libx264', '-preset', presetOf(opt), '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
   if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k');
   else args.push('-an');
   args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outFile);
@@ -204,7 +211,7 @@ function encodeWhole(info, opt, W, H, fps, outFile) {
   args.push('-map', '0:v:0');
   if (opt.audio) args.push('-map', silent ? '1:a:0' : '0:a:0');
   args.push('-vf', `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps}`);
-  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
+  args.push('-c:v', 'libx264', '-preset', presetOf(opt), '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
   if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k', '-ar', '44100', '-ac', '2');
   else args.push('-an');
   if (silent) args.push('-shortest');
@@ -380,6 +387,7 @@ function validateRun(b) {
   }
   if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
+  if (b.speed !== undefined && !Object.hasOwn(PRESETS, b.speed)) throw new Error('処理の速さが正しくありません');
   if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
 }
 
@@ -390,6 +398,7 @@ function validateJoin(b) {
   if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
   if (typeof b.audio !== 'boolean') throw new Error('音の設定が正しくありません');
+  if (b.speed !== undefined && !Object.hasOwn(PRESETS, b.speed)) throw new Error('処理の速さが正しくありません');
   if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
 }
 
