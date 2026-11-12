@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 const TOKEN = crypto.randomBytes(16).toString('hex');
-const VIDEO_EXT = new Set(['.mp4', '.mov', '.mkv', '.avi', '.m4v', '.webm', '.ts', '.mts', '.m2ts', '.rm', '.rmvb']);
+const VIDEO_EXT = new Set(['.mp4', '.mov', '.mkv', '.avi', '.m4v', '.webm', '.ts', '.mts', '.m2ts', '.rm', '.rmvb', '.wmv', '.flv']);
 const MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska', '.webm': 'video/webm' };
 // ブラウザを閉じたまま放っておいたら、サーバーも自分で終わる(メモリを使い続けないように)
 const IDLE_EXIT_MS = 5 * 60 * 1000;
@@ -67,11 +67,11 @@ function psDialog(script) {
 }
 const PICK_FILE =
   "$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='動画を選んでください';" +
-  "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts;*.rm;*.rmvb|すべてのファイル|*.*';" +
+  "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts;*.rm;*.rmvb;*.wmv;*.flv|すべてのファイル|*.*';" +
   "if($d.ShowDialog($f) -eq 'OK'){$d.FileName}";
 const PICK_FILES =
   "$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='つなげたい動画を、まとめて選んでください(Ctrl を押しながらクリック)';$d.Multiselect=$true;" +
-  "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts;*.rm;*.rmvb|すべてのファイル|*.*';" +
+  "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts;*.rm;*.rmvb;*.wmv;*.flv|すべてのファイル|*.*';" +
   'if($d.ShowDialog($f) -eq \'OK\'){$d.FileNames -join "`n"}';
 const PICK_FOLDER =
   "$d=New-Object System.Windows.Forms.FolderBrowserDialog;$d.Description='保存するフォルダを選んでください';" +
