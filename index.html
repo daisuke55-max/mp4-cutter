@@ -241,7 +241,21 @@
     $('merge').disabled = segs.length < 2;
     $('run').disabled = !segs.length;
   }
-  $('merge').onchange = renderSegs;
+  // 解像度・画質・音・結合の選択は、変えるたびに覚えておく
+  const saveSettings = () => api('/api/settings', {
+    height: Number($('height').value), crf: Number($('crf').value),
+    audio: $('audio').checked, merge: $('merge').checked,
+  }).catch(() => {});
+  const applySettings = (s) => {
+    if (!s) return;
+    if ([...$('height').options].some((o) => o.value === String(s.height))) $('height').value = String(s.height);
+    if ([...$('crf').options].some((o) => o.value === String(s.crf))) $('crf').value = String(s.crf);
+    $('audio').checked = s.audio;
+    $('merge').checked = s.merge;
+    renderSegs();
+  };
+  ['height', 'crf', 'audio'].forEach((id) => $(id).addEventListener('change', saveSettings));
+  $('merge').onchange = () => { renderSegs(); saveSettings(); };
 
   $('pickDir').onclick = async () => {
     try { const r = await api('/api/pickfolder', {}); if (r.dir) $('outDir').value = r.dir; } catch (e) { $('runErr').textContent = e.message; }
@@ -306,7 +320,7 @@
     else if (k === 'o' || k === 'O') $('setEnd').click();
   });
 
-  api('/api/state').then((s) => { if (!s.ffmpeg) $('loadErr').textContent = 'ffmpeg が見つかりません。'; if (s.info) loaded(s.info); }).catch(() => {});
+  api('/api/state').then((s) => { if (!s.ffmpeg) $('loadErr').textContent = 'ffmpeg が見つかりません。'; applySettings(s.settings); if (s.info) loaded(s.info); }).catch(() => {});
 })();
 </script>
 </body>

@@ -97,6 +97,33 @@ async function probe(file) {
   };
 }
 
+// 解像度・画質などの選択を覚えておく(次に起動したときも、同じ設定で始まる)。
+// 保存先は、ツールのフォルダの外(AppData)。ツールを入れ直しても消えない。
+const HEIGHTS = [0, 360, 480, 540, 720, 1080];
+const DEFAULT_SETTINGS = { height: 720, crf: 26, audio: true, merge: true };
+const SETTINGS_FILE = path.join(process.env.APPDATA || __dirname, 'mp4-cutter', 'settings.json');
+function cleanSettings(s) {
+  const o = { ...DEFAULT_SETTINGS };
+  if (s && HEIGHTS.includes(s.height)) o.height = s.height;
+  if (s && Number.isInteger(s.crf) && s.crf >= 16 && s.crf <= 40) o.crf = s.crf;
+  if (s && typeof s.audio === 'boolean') o.audio = s.audio;
+  if (s && typeof s.merge === 'boolean') o.merge = s.merge;
+  return o;
+}
+function loadSettings() {
+  try {
+    return cleanSettings(JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')));
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+function saveSettings(s) {
+  try {
+    fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2));
+  } catch { /* 保存できなくても、ツールは使える */ }
+}
+
 // いま選んでいる動画と、書き出しの状況
 const state = { info: null };
 const job = { running: false, cancel: false, merging: false, total: 0, index: 0, percent: 0, results: [], error: null, child: null };
@@ -276,7 +303,7 @@ function validateRun(b) {
     if (!(Number.isFinite(s.start) && Number.isFinite(s.end) && s.start >= 0 && s.end > s.start && s.end <= state.info.duration + 1))
       throw new Error('範囲の時間が正しくありません');
   }
-  if (![0, 360, 480, 540, 720, 1080].includes(b.height)) throw new Error('解像度が正しくありません');
+  if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
   if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
 }
@@ -300,13 +327,17 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/status')
       return sendJson(res, 200, { running: job.running, merging: job.merging, total: job.total, index: job.index, percent: job.percent, results: job.results, error: job.error });
     if (req.method === 'GET' && url.pathname === '/api/state')
-      return sendJson(res, 200, { info: state.info, ffmpeg: !!FFMPEG && !!FFPROBE });
+      return sendJson(res, 200, { info: state.info, ffmpeg: !!FFMPEG && !!FFPROBE, settings: loadSettings() });
 
     if (req.method !== 'POST') return res.writeHead(404).end();
     const body = await readBody(req);
 
     if (url.pathname === '/api/ping') {
       lastPing = Date.now();
+      return sendJson(res, 200, { ok: true });
+    }
+    if (url.pathname === '/api/settings') {
+      saveSettings(cleanSettings(body));
       return sendJson(res, 200, { ok: true });
     }
     if (url.pathname === '/api/pick') {
