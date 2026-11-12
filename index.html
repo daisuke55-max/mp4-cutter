@@ -136,6 +136,45 @@
     </table>
     <p class="hint" id="resSum"></p>
   </section>
+
+  <section>
+    <details id="joinBox">
+      <summary><b>複数の動画を、順番につなげて1つの mp4 にする(rm もOK)</b></summary>
+      <p class="hint">大きさや形式がばらばらの動画でも、そろえてからつなげます。ここでは、動画をまるごとつなげます(範囲の切り出しは、上の手順で行います)。</p>
+      <div class="row">
+        <button class="primary" id="jPick">つなげる動画を選ぶ…</button>
+        <button id="jAdd" disabled>動画を追加…</button>
+      </div>
+      <table id="jTbl" hidden>
+        <thead><tr><th>#</th><th>ファイル</th><th>長さ</th><th>大きさ</th><th></th></tr></thead>
+        <tbody id="jList"></tbody>
+      </table>
+      <p class="hint" id="jTotal"></p>
+      <div class="row">
+        <div class="field"><label for="jHeight">解像度(縦の画素数)</label><select id="jHeight"></select></div>
+        <div class="field"><label for="jCrf">画質(小さいほど、ファイルが小さくなります)</label><select id="jCrf"></select></div>
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="jAudio" checked> 音も残す</label>
+      </div>
+      <div class="row">
+        <div class="field grow"><label for="jOutDir">保存先のフォルダ</label>
+          <div class="row" style="margin:0"><input type="text" id="jOutDir" class="grow"><button id="jPickDir">変更…</button></div></div>
+      </div>
+      <div class="row">
+        <button class="primary" id="jRun" disabled>つなげて書き出す</button>
+        <button id="jCancel" hidden>中止</button>
+      </div>
+      <div id="jProg" hidden>
+        <p id="jProgText"></p>
+        <div class="bar"><div id="jProgBar"></div></div>
+      </div>
+      <div class="err" id="jErr"></div>
+      <table id="jResTbl" hidden>
+        <thead><tr><th>書き出したファイル</th><th>大きさ</th><th></th></tr></thead>
+        <tbody id="jRes"></tbody>
+      </table>
+      <p class="hint" id="jResSum"></p>
+    </details>
+  </section>
 </main>
 
 <script>
@@ -252,6 +291,9 @@
     if ([...$('crf').options].some((o) => o.value === String(s.crf))) $('crf').value = String(s.crf);
     $('audio').checked = s.audio;
     $('merge').checked = s.merge;
+    $('jHeight').value = $('height').value;
+    $('jCrf').value = $('crf').value;
+    $('jAudio').checked = $('audio').checked;
     renderSegs();
   };
   ['height', 'crf', 'audio'].forEach((id) => $(id).addEventListener('change', saveSettings));
@@ -268,46 +310,122 @@
         segments: segs, height: Number($('height').value), crf: Number($('crf').value),
         audio: $('audio').checked, merge: $('merge').checked, outDir: $('outDir').value.trim(),
       });
-      poll();
+      poll(P_CUT);
     } catch (e) { $('runErr').textContent = e.message; }
   };
   $('cancel').onclick = () => api('/api/cancel', {});
 
-  function poll() {
+  // 書き出しの進み具合を、画面に出す(P: 画面のどの部品に出すか)
+  function poll(P) {
     clearInterval(timer);
     timer = setInterval(async () => {
       let s;
       try { s = await api('/api/status'); } catch { return; }
-      $('prog').hidden = false;
-      $('cancel').hidden = !s.running;
-      $('run').disabled = s.running;
-      const done = s.running ? s.index : s.results.length;
+      $(P.prog).hidden = false;
+      $(P.cancel).hidden = !s.running;
+      $(P.run).disabled = s.running;
       const pct = s.running ? s.percent : (s.error ? s.percent : 100);
-      $('progBar').style.width = pct + '%';
-      $('progText').textContent = s.running ? (s.merging ? '1つのファイルにつなげています…' : `${s.index + 1} / ${s.total} 本目を書き出し中… ${Math.floor(s.percent)}%`) : (s.error ? '' : '完了しました');
-      $('res').innerHTML = '';
+      $(P.bar).style.width = pct + '%';
+      $(P.text).textContent = s.running ? (s.merging ? '1つのファイルにつなげています…' : `${s.index + 1} / ${s.total} 本目を書き出し中… ${Math.floor(s.percent)}%`) : (s.error ? '' : '完了しました');
+      $(P.res).innerHTML = '';
       s.results.forEach((r) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td></td><td>${bytes(r.size)}</td><td></td>`;
         tr.firstChild.textContent = r.name;
         const b = document.createElement('button'); b.textContent = 'フォルダで見る';
-        b.onclick = () => api('/api/reveal', { file: r.file }).catch((e) => ($('runErr').textContent = e.message));
+        b.onclick = () => api('/api/reveal', { file: r.file }).catch((e) => ($(P.err).textContent = e.message));
         tr.lastChild.appendChild(b);
-        $('res').appendChild(tr);
+        $(P.res).appendChild(tr);
       });
-      $('resTbl').hidden = !s.results.length;
+      $(P.tbl).hidden = !s.results.length;
       if (!s.running) {
         clearInterval(timer);
-        $('run').disabled = !segs.length;
-        if (s.error) $('runErr').textContent = s.error;
-        if (s.results.length) {
-          const out = s.results.reduce((a, r) => a + r.size, 0);
-          const srcPart = s.results.reduce((a, r) => a + r.dur, 0) / info.duration * info.size;
-          $('resSum').textContent = `書き出した合計: ${bytes(out)}。元の動画の同じ長さ分(約 ${bytes(srcPart)})の ${(out / srcPart * 100).toFixed(0)}% になりました。元の動画全体(${bytes(info.size)})の ${(out / info.size * 100).toFixed(1)}% です。`;
-        }
+        if (s.error) $(P.err).textContent = s.error;
+        P.finish(s);
       }
     }, 700);
   }
+  const P_CUT = {
+    prog: 'prog', cancel: 'cancel', run: 'run', bar: 'progBar', text: 'progText', res: 'res', tbl: 'resTbl', err: 'runErr',
+    finish(s) {
+      $('run').disabled = !segs.length;
+      if (!s.results.length) return;
+      const out = s.results.reduce((a, r) => a + r.size, 0);
+      const srcPart = s.results.reduce((a, r) => a + r.dur, 0) / info.duration * info.size;
+      $('resSum').textContent = `書き出した合計: ${bytes(out)}。元の動画の同じ長さ分(約 ${bytes(srcPart)})の ${(out / srcPart * 100).toFixed(0)}% になりました。元の動画全体(${bytes(info.size)})の ${(out / info.size * 100).toFixed(1)}% です。`;
+    },
+  };
+
+  // ---- 複数の動画を、1つにつなげる ----
+  let jList = [];
+  $('jHeight').innerHTML = $('height').innerHTML;
+  $('jCrf').innerHTML = $('crf').innerHTML;
+  const P_JOIN = {
+    prog: 'jProg', cancel: 'jCancel', run: 'jRun', bar: 'jProgBar', text: 'jProgText', res: 'jRes', tbl: 'jResTbl', err: 'jErr',
+    finish(s) {
+      $('jRun').disabled = jList.length < 2;
+      if (!s.results.length) return;
+      const out = s.results.reduce((a, r) => a + r.size, 0);
+      const src = jList.reduce((a, i) => a + i.size, 0);
+      $('jResSum').textContent = `書き出した大きさ: ${bytes(out)}(元の動画 ${jList.length} 本の合計 ${bytes(src)} の ${(out / src * 100).toFixed(1)}%)`;
+    },
+  };
+  function renderJoin() {
+    $('jTbl').hidden = !jList.length;
+    $('jList').innerHTML = '';
+    jList.forEach((f, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(f.duration)}</td><td>${bytes(f.size)}</td><td></td>`;
+      tr.children[1].textContent = f.name;
+      const mk = (label, fn, off) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; return b; };
+      tr.lastChild.append(
+        mk('↑', () => { [jList[i - 1], jList[i]] = [jList[i], jList[i - 1]]; renderJoin(); }, i === 0), ' ',
+        mk('↓', () => { [jList[i + 1], jList[i]] = [jList[i], jList[i + 1]]; renderJoin(); }, i === jList.length - 1), ' ',
+        mk('削除', () => { jList.splice(i, 1); renderJoin(); }),
+      );
+      $('jList').appendChild(tr);
+    });
+    const sum = jList.reduce((a, f) => a + f.duration, 0);
+    $('jTotal').textContent = jList.length ? `${jList.length} 本 / 合計 ${fmt(sum)}。上から順につながります。${jList.length < 2 ? '(2本以上選んでください)' : ''}` : '';
+    $('jAdd').disabled = !jList.length;
+    $('jRun').disabled = jList.length < 2;
+  }
+  async function joinPick(add) {
+    $('jErr').textContent = '';
+    $('jPick').disabled = $('jAdd').disabled = true;
+    try {
+      const r = await api('/api/joinpick', {});
+      if (r.infos) {
+        jList = add ? jList.concat(r.infos.filter((i) => !jList.some((x) => x.file === i.file))) : r.infos;
+        if (jList.length && (!add || !$('jOutDir').value)) $('jOutDir').value = jList[0].file.replace(/[\\/][^\\/]+$/, '');
+      }
+    } catch (e) { $('jErr').textContent = e.message; }
+    $('jPick').disabled = false;
+    renderJoin();
+  }
+  $('jPick').onclick = () => joinPick(false);
+  $('jAdd').onclick = () => joinPick(true);
+  $('jPickDir').onclick = async () => {
+    try { const r = await api('/api/pickfolder', {}); if (r.dir) $('jOutDir').value = r.dir; } catch (e) { $('jErr').textContent = e.message; }
+  };
+  $('jRun').onclick = async () => {
+    $('jErr').textContent = '';
+    $('jResTbl').hidden = true; $('jResSum').textContent = '';
+    try {
+      await api('/api/joinrun', {
+        files: jList.map((f) => f.file), height: Number($('jHeight').value), crf: Number($('jCrf').value),
+        audio: $('jAudio').checked, outDir: $('jOutDir').value.trim(),
+      });
+      poll(P_JOIN);
+    } catch (e) { $('jErr').textContent = e.message; }
+  };
+  $('jCancel').onclick = () => api('/api/cancel', {});
+  // 解像度・画質・音は、上の書き出しと同じ設定を使う(どちらで変えても、そろえて覚える)
+  [['height', 'jHeight'], ['crf', 'jCrf'], ['audio', 'jAudio']].forEach(([a, b]) => {
+    const copy = (from, to) => () => { if (from.type === 'checkbox') to.checked = from.checked; else to.value = from.value; };
+    $(a).addEventListener('change', copy($(a), $(b)));
+    $(b).addEventListener('change', () => { copy($(b), $(a))(); saveSettings(); });
+  });
 
   document.addEventListener('keydown', (e) => {
     if (!info || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox') return;

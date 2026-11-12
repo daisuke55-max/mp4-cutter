@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 const TOKEN = crypto.randomBytes(16).toString('hex');
-const VIDEO_EXT = new Set(['.mp4', '.mov', '.mkv', '.avi', '.m4v', '.webm', '.ts', '.mts', '.m2ts']);
+const VIDEO_EXT = new Set(['.mp4', '.mov', '.mkv', '.avi', '.m4v', '.webm', '.ts', '.mts', '.m2ts', '.rm', '.rmvb']);
 const MIME = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska', '.webm': 'video/webm' };
 // ブラウザを閉じたまま放っておいたら、サーバーも自分で終わる(メモリを使い続けないように)
 const IDLE_EXIT_MS = 5 * 60 * 1000;
@@ -67,11 +67,21 @@ function psDialog(script) {
 }
 const PICK_FILE =
   "$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='動画を選んでください';" +
-  "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts|すべてのファイル|*.*';" +
+  "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts;*.rm;*.rmvb|すべてのファイル|*.*';" +
   "if($d.ShowDialog($f) -eq 'OK'){$d.FileName}";
+const PICK_FILES =
+  "$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='つなげたい動画を、まとめて選んでください(Ctrl を押しながらクリック)';$d.Multiselect=$true;" +
+  "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts;*.rm;*.rmvb|すべてのファイル|*.*';" +
+  'if($d.ShowDialog($f) -eq \'OK\'){$d.FileNames -join "`n"}';
 const PICK_FOLDER =
   "$d=New-Object System.Windows.Forms.FolderBrowserDialog;$d.Description='保存するフォルダを選んでください';" +
   "if($d.ShowDialog($f) -eq 'OK'){$d.SelectedPath}";
+
+function parseFps(t) {
+  const m = /^(\d+)\/(\d+)$/.exec(String(t || ''));
+  const f = m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : NaN;
+  return f > 0 && f <= 120 ? f : 0;
+}
 
 // 選んだ動画の情報(長さ・大きさ・解像度など)
 async function probe(file) {
@@ -94,6 +104,7 @@ async function probe(file) {
     height: v.height,
     vcodec: v.codec_name,
     hasAudio: !!a,
+    fps: parseFps(v.avg_frame_rate) || parseFps(v.r_frame_rate) || 30,
   };
 }
 
@@ -125,7 +136,7 @@ function saveSettings(s) {
 }
 
 // いま選んでいる動画と、書き出しの状況
-const state = { info: null };
+const state = { info: null, probed: new Map() }; // probed: つなげる用に調べた動画(場所 → 情報)
 const job = { running: false, cancel: false, merging: false, total: 0, index: 0, percent: 0, results: [], error: null, child: null };
 let lastPing = Date.now();
 
@@ -143,17 +154,9 @@ const stamp = (sec) => {
   return `${p(Math.floor(s / 3600))}h${p(Math.floor((s % 3600) / 60))}m${p(s % 60)}s`;
 };
 
-// 1か所ずつ ffmpeg で切り出して、解像度と画質を下げて書き出す
-function encodeOne(src, seg, opt, outFile) {
+// ffmpeg を動かして、進み具合(job.percent)を更新する。dur は、書き出す長さ(秒)
+function runFfmpeg(args, dur, failMsg) {
   return new Promise((resolve, reject) => {
-    const dur = seg.end - seg.start;
-    const args = ['-hide_banner', '-y', '-ss', String(seg.start), '-i', src, '-t', String(dur), '-map', '0:v:0', '-map', '0:a:0?'];
-    if (opt.height > 0) args.push('-vf', `scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
-    args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
-    if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k');
-    else args.push('-an');
-    args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outFile);
-
     const child = spawn(FFMPEG, args, { windowsHide: true });
     job.child = child;
     let buf = '';
@@ -175,10 +178,38 @@ function encodeOne(src, seg, opt, outFile) {
     child.on('close', (code) => {
       job.child = null;
       if (job.cancel) return reject(new Error('中止しました'));
-      if (code !== 0) return reject(new Error('書き出しに失敗しました: ' + tail.trim().split('\n').pop()));
+      if (code !== 0) return reject(new Error(failMsg + ': ' + tail.trim().split('\n').pop()));
       resolve();
     });
   });
+}
+
+// 1か所ずつ ffmpeg で切り出して、解像度と画質を下げて書き出す
+function encodeOne(src, seg, opt, outFile) {
+  const dur = seg.end - seg.start;
+  const args = ['-hide_banner', '-y', '-ss', String(seg.start), '-i', src, '-t', String(dur), '-map', '0:v:0', '-map', '0:a:0?'];
+  if (opt.height > 0) args.push('-vf', `scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
+  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
+  if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k');
+  else args.push('-an');
+  args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outFile);
+  return runFfmpeg(args, dur, '書き出しに失敗しました');
+}
+
+// 動画を1本まるごと、決まった大きさ・コマ数・音の形にそろえて書き出す(つなげる前の準備)
+function encodeWhole(info, opt, W, H, fps, outFile) {
+  const args = ['-hide_banner', '-y', '-i', info.file];
+  const silent = opt.audio && !info.hasAudio; // 音のない動画には無音をつける(つなげたとき、音がずれないように)
+  if (silent) args.push('-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo');
+  args.push('-map', '0:v:0');
+  if (opt.audio) args.push('-map', silent ? '1:a:0' : '0:a:0');
+  args.push('-vf', `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps}`);
+  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
+  if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k', '-ar', '44100', '-ac', '2');
+  else args.push('-an');
+  if (silent) args.push('-shortest');
+  args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outFile);
+  return runFfmpeg(args, info.duration, '書き出しに失敗しました(' + info.name + ')');
 }
 
 // 同じ設定で書き出した範囲どうしを、作り直さずにそのままつなげる(速い)
@@ -228,6 +259,43 @@ async function runJob(body) {
       await concatSegments(work, body.segments.length, out);
       job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: total });
     }
+  } catch (e) {
+    job.error = e.message;
+  } finally {
+    if (work) {
+      try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* 残っても害はない */ }
+    }
+    job.merging = false;
+    job.running = false;
+  }
+}
+
+// 複数の動画を、順番に1本の mp4 につなげる(大きさや形式がばらばらでも、そろえてからつなげる)
+async function runJoin(body) {
+  const infos = body.files.map((f) => state.probed.get(f));
+  const n = infos.length;
+  Object.assign(job, { running: true, cancel: false, total: n, index: 0, percent: 0, merging: false, results: [], error: null });
+  let work = null;
+  try {
+    fs.mkdirSync(body.outDir, { recursive: true });
+    work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
+    const even = (x) => Math.max(2, Math.round(x / 2) * 2);
+    const tallest = infos.reduce((a, b) => (b.height > a.height ? b : a));
+    const H = even(body.height > 0 ? Math.min(body.height, tallest.height) : tallest.height);
+    const W = even((H * tallest.width) / tallest.height);
+    const fps = Math.round(Math.min(30, Math.max(...infos.map((i) => i.fps))) * 1000) / 1000;
+    for (let i = 0; i < n; i++) {
+      job.index = i;
+      job.percent = 0;
+      await encodeWhole(infos[i], body, W, H, fps, path.join(work, `seg${i}.mp4`));
+      job.percent = 100;
+    }
+    job.merging = true;
+    const total = infos.reduce((a, i) => a + i.duration, 0);
+    const base = path.parse(infos[0].file).name;
+    const out = uniquePath(path.join(body.outDir, `${base}_ほか${n - 1}本を結合_${H}p.mp4`));
+    await concatSegments(work, n, out);
+    job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: total });
   } catch (e) {
     job.error = e.message;
   } finally {
@@ -308,6 +376,16 @@ function validateRun(b) {
   if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
 }
 
+function validateJoin(b) {
+  if (job.running) throw new Error('いま書き出し中です');
+  if (!Array.isArray(b.files) || b.files.length < 2 || b.files.length > 50) throw new Error('つなげる動画を、2本以上選んでください');
+  if (!b.files.every((f) => typeof f === 'string' && state.probed.has(f))) throw new Error('動画をもう一度選んでください');
+  if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
+  if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
+  if (typeof b.audio !== 'boolean') throw new Error('音の設定が正しくありません');
+  if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     // 他のサイトからの呼び出しを防ぐ: 宛先と合言葉を確認する
@@ -352,6 +430,28 @@ const server = http.createServer(async (req, res) => {
       if (!fs.existsSync(f)) throw new Error('ファイルが見つかりません');
       state.info = await probe(f);
       return sendJson(res, 200, { info: state.info });
+    }
+    if (url.pathname === '/api/joinpick') {
+      const out = await psDialog(PICK_FILES);
+      if (!out) return sendJson(res, 200, { canceled: true });
+      const files = out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+      files.sort((a, b) => path.basename(a).localeCompare(path.basename(b), 'ja', { numeric: true })); // 初めは、ファイル名の順
+      const infos = [];
+      for (const f of files) {
+        try {
+          const i = await probe(f);
+          state.probed.set(f, i);
+          infos.push(i);
+        } catch (e) {
+          throw new Error(`${path.basename(f)}: ${e.message}`);
+        }
+      }
+      return sendJson(res, 200, { infos });
+    }
+    if (url.pathname === '/api/joinrun') {
+      validateJoin(body);
+      runJoin(body);
+      return sendJson(res, 200, { ok: true });
     }
     if (url.pathname === '/api/pickfolder') {
       const d = await psDialog(PICK_FOLDER);
