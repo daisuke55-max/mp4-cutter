@@ -139,10 +139,10 @@
 
   <section>
     <details id="joinBox">
-      <summary><b>複数の動画を、順番につなげて1つの mp4 にする(rm もOK)</b></summary>
-      <p class="hint">大きさや形式がばらばらの動画でも、そろえてからつなげます。ここでは、動画をまるごとつなげます(範囲の切り出しは、上の手順で行います)。</p>
+      <summary><b>動画を mp4 に変換する / 複数の動画を1つの mp4 につなげる(rm・wmv・flv もOK)</b></summary>
+      <p class="hint">動画を1本だけ選ぶと、そのまま mp4 に変換します。複数選ぶと、大きさや形式がばらばらでも、そろえてから順番につなげます。ここでは、動画をまるごと使います(範囲の切り出しは、上の手順で行います)。</p>
       <div class="row">
-        <button class="primary" id="jPick">つなげる動画を選ぶ…</button>
+        <button class="primary" id="jPick">動画を選ぶ(1本でも複数でも)…</button>
         <button id="jAdd" disabled>動画を追加…</button>
       </div>
       <table id="jTbl" hidden>
@@ -160,7 +160,7 @@
           <div class="row" style="margin:0"><input type="text" id="jOutDir" class="grow"><button id="jPickDir">変更…</button></div></div>
       </div>
       <div class="row">
-        <button class="primary" id="jRun" disabled>つなげて書き出す</button>
+        <button class="primary" id="jRun" disabled>mp4 にして書き出す</button>
         <button id="jCancel" hidden>中止</button>
       </div>
       <div id="jProg" hidden>
@@ -363,7 +363,7 @@
   const P_JOIN = {
     prog: 'jProg', cancel: 'jCancel', run: 'jRun', bar: 'jProgBar', text: 'jProgText', res: 'jRes', tbl: 'jResTbl', err: 'jErr',
     finish(s) {
-      $('jRun').disabled = jList.length < 2;
+      $('jRun').disabled = jList.length < 1;
       if (!s.results.length) return;
       const out = s.results.reduce((a, r) => a + r.size, 0);
       const src = jList.reduce((a, i) => a + i.size, 0);
@@ -386,9 +386,9 @@
       $('jList').appendChild(tr);
     });
     const sum = jList.reduce((a, f) => a + f.duration, 0);
-    $('jTotal').textContent = jList.length ? `${jList.length} 本 / 合計 ${fmt(sum)}。上から順につながります。${jList.length < 2 ? '(2本以上選んでください)' : ''}` : '';
+    $('jTotal').textContent = jList.length ? `${jList.length} 本 / 合計 ${fmt(sum)}。${jList.length < 2 ? 'この1本を mp4 に変換します。' : '上から順につながります。'}` : '';
     $('jAdd').disabled = !jList.length;
-    $('jRun').disabled = jList.length < 2;
+    $('jRun').disabled = jList.length < 1;
   }
   async function joinPick(add) {
     $('jErr').textContent = '';

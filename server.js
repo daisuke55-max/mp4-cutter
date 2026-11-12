@@ -290,11 +290,18 @@ async function runJoin(body) {
       await encodeWhole(infos[i], body, W, H, fps, path.join(work, `seg${i}.mp4`));
       job.percent = 100;
     }
-    job.merging = true;
     const total = infos.reduce((a, i) => a + i.duration, 0);
     const base = path.parse(infos[0].file).name;
-    const out = uniquePath(path.join(body.outDir, `${base}_ほか${n - 1}本を結合_${H}p.mp4`));
-    await concatSegments(work, n, out);
+    let out;
+    if (n === 1) {
+      // 1本だけのときは、つなげずに、そのまま mp4 として保存する
+      out = uniquePath(path.join(body.outDir, `${base}_${H}p.mp4`));
+      fs.renameSync(path.join(work, 'seg0.mp4'), out);
+    } else {
+      job.merging = true;
+      out = uniquePath(path.join(body.outDir, `${base}_ほか${n - 1}本を結合_${H}p.mp4`));
+      await concatSegments(work, n, out);
+    }
     job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: total });
   } catch (e) {
     job.error = e.message;
@@ -378,7 +385,7 @@ function validateRun(b) {
 
 function validateJoin(b) {
   if (job.running) throw new Error('いま書き出し中です');
-  if (!Array.isArray(b.files) || b.files.length < 2 || b.files.length > 50) throw new Error('つなげる動画を、2本以上選んでください');
+  if (!Array.isArray(b.files) || b.files.length < 1 || b.files.length > 50) throw new Error('動画を選んでください');
   if (!b.files.every((f) => typeof f === 'string' && state.probed.has(f))) throw new Error('動画をもう一度選んでください');
   if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
