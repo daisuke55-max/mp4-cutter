@@ -297,8 +297,9 @@ async function runJoin(body) {
     fs.mkdirSync(body.outDir, { recursive: true });
     work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
     const even = (x) => Math.max(2, Math.round(x / 2) * 2);
-    const turned = body.rotate === 90 || body.rotate === 270; // 90度回すと、縦と横が入れ替わる
-    const sizes = infos.map((i) => (turned ? { w: i.height, h: i.width } : { w: i.width, h: i.height }));
+    const rots = body.rotates || infos.map(() => 0); // 動画ごとの向き
+    // 90度回すと、縦と横が入れ替わる
+    const sizes = infos.map((i, k) => (rots[k] === 90 || rots[k] === 270 ? { w: i.height, h: i.width } : { w: i.width, h: i.height }));
     const tallest = sizes.reduce((a, b) => (b.h > a.h ? b : a));
     const H = even(body.height > 0 ? Math.min(body.height, tallest.h) : tallest.h);
     const W = even((H * tallest.w) / tallest.h);
@@ -306,7 +307,7 @@ async function runJoin(body) {
     for (let i = 0; i < n; i++) {
       job.index = i;
       job.percent = 0;
-      await encodeWhole(infos[i], body, W, H, fps, path.join(work, `seg${i}.mp4`));
+      await encodeWhole(infos[i], { ...body, rotate: rots[i] }, W, H, fps, path.join(work, `seg${i}.mp4`));
       job.percent = 100;
     }
     const total = infos.reduce((a, i) => a + i.duration, 0);
@@ -412,7 +413,8 @@ function validateJoin(b) {
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
   if (typeof b.audio !== 'boolean') throw new Error('音の設定が正しくありません');
   if (b.speed !== undefined && !Object.hasOwn(PRESETS, b.speed)) throw new Error('処理の速さが正しくありません');
-  if (b.rotate !== undefined && !ROTATIONS.includes(b.rotate)) throw new Error('向きが正しくありません');
+  if (b.rotates !== undefined && !(Array.isArray(b.rotates) && b.rotates.length === b.files.length && b.rotates.every((r) => ROTATIONS.includes(r))))
+    throw new Error('向きが正しくありません');
   if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
 }
 

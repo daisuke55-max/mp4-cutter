@@ -159,7 +159,7 @@
         <button id="jAdd" disabled>動画を追加…</button>
       </div>
       <table id="jTbl" hidden>
-        <thead><tr><th>#</th><th>ファイル</th><th>長さ</th><th>大きさ</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>ファイル</th><th>長さ</th><th>大きさ</th><th>向き</th><th></th></tr></thead>
         <tbody id="jList"></tbody>
       </table>
       <p class="hint" id="jTotal"></p>
@@ -167,7 +167,6 @@
         <div class="field"><label for="jHeight">解像度(縦の画素数)</label><select id="jHeight"></select></div>
         <div class="field"><label for="jCrf">画質(小さいほど、ファイルが小さくなります)</label><select id="jCrf"></select></div>
         <div class="field"><label for="jSpeed">処理の速さ</label><select id="jSpeed"></select></div>
-        <div class="field"><label for="jRotate">向き(全部の動画に、同じように回す)</label><select id="jRotate"></select></div>
         <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="jAudio" checked> 音も残す</label>
       </div>
       <div class="row">
@@ -378,7 +377,6 @@
   $('jHeight').innerHTML = $('height').innerHTML;
   $('jCrf').innerHTML = $('crf').innerHTML;
   $('jSpeed').innerHTML = $('speed').innerHTML;
-  $('jRotate').innerHTML = $('rotate').innerHTML; // 向きは、動画ごとに違うので、覚えない
   const P_JOIN = {
     prog: 'jProg', cancel: 'jCancel', run: 'jRun', bar: 'jProgBar', text: 'jProgText', res: 'jRes', tbl: 'jResTbl', err: 'jErr',
     finish(s) {
@@ -394,8 +392,14 @@
     $('jList').innerHTML = '';
     jList.forEach((f, i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(f.duration)}</td><td>${bytes(f.size)}</td><td></td>`;
+      tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(f.duration)}</td><td>${bytes(f.size)}</td><td></td><td></td>`;
       tr.children[1].textContent = f.name;
+      // 動画ごとの向き(覚えない。動画ごとに違うので)
+      const sel = document.createElement('select');
+      [[0, 'そのまま'], [90, '右に90度'], [270, '左に90度'], [180, '180度']].forEach(([v, t]) => sel.add(new Option(t, v)));
+      sel.value = String(f.rotate || 0);
+      sel.onchange = () => (f.rotate = Number(sel.value));
+      tr.children[4].appendChild(sel);
       const mk = (label, fn, off) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; return b; };
       tr.lastChild.append(
         mk('↑', () => { [jList[i - 1], jList[i]] = [jList[i], jList[i - 1]]; renderJoin(); }, i === 0), ' ',
@@ -415,6 +419,7 @@
     try {
       const r = await api('/api/joinpick', {});
       if (r.infos) {
+        r.infos.forEach((i) => (i.rotate = 0));
         jList = add ? jList.concat(r.infos.filter((i) => !jList.some((x) => x.file === i.file))) : r.infos;
         if (jList.length && (!add || !$('jOutDir').value)) $('jOutDir').value = jList[0].file.replace(/[\\/][^\\/]+$/, '');
       }
@@ -433,7 +438,7 @@
     try {
       await api('/api/joinrun', {
         files: jList.map((f) => f.file), height: Number($('jHeight').value), crf: Number($('jCrf').value),
-        audio: $('jAudio').checked, speed: $('jSpeed').value, rotate: Number($('jRotate').value), outDir: $('jOutDir').value.trim(),
+        audio: $('jAudio').checked, speed: $('jSpeed').value, rotates: jList.map((f) => f.rotate || 0), outDir: $('jOutDir').value.trim(),
       });
       poll(P_JOIN);
     } catch (e) { $('jErr').textContent = e.message; }
