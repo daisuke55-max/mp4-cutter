@@ -300,7 +300,9 @@ async function runJoin(body) {
     const rots = body.rotates || infos.map(() => 0); // 動画ごとの向き
     // 90度回すと、縦と横が入れ替わる
     const sizes = infos.map((i, k) => (rots[k] === 90 || rots[k] === 270 ? { w: i.height, h: i.width } : { w: i.width, h: i.height }));
-    const tallest = sizes.reduce((a, b) => (b.h > a.h ? b : a));
+    // 全体の大きさは、横長の動画を基準にする(縦長の動画は、左右に黒い帯をつけて入れる)。横長が1本もなければ、縦が一番大きい動画に合わせる
+    const landscape = sizes.filter((z) => z.w >= z.h);
+    const tallest = (landscape.length ? landscape : sizes).reduce((a, b) => (b.h > a.h ? b : a));
     const H = even(body.height > 0 ? Math.min(body.height, tallest.h) : tallest.h);
     const W = even((H * tallest.w) / tallest.h);
     const fps = Math.round(Math.min(30, Math.max(...infos.map((i) => i.fps))) * 1000) / 1000;
