@@ -93,6 +93,9 @@ async function probe(file) {
   const v = streams.find((s) => s.codec_type === 'video');
   if (!v) throw new Error('映像が見つかりませんでした');
   const a = streams.find((s) => s.codec_type === 'audio');
+  // スマホの動画などは、「横向きに撮ったものを、縦に見せる」印がついていることがある。見える向きの大きさにそろえる
+  const rotTag = Number((v.tags && v.tags.rotate) || ((v.side_data_list || []).find((d) => d.rotation !== undefined) || {}).rotation || 0);
+  const sideways = Math.abs(rotTag) % 180 === 90;
   const duration = parseFloat((j.format && j.format.duration) || v.duration);
   if (!(duration > 0)) throw new Error('動画の長さが分かりませんでした');
   return {
@@ -100,8 +103,8 @@ async function probe(file) {
     name: path.basename(file),
     duration,
     size: Number((j.format && j.format.size) || fs.statSync(file).size),
-    width: v.width,
-    height: v.height,
+    width: sideways ? v.height : v.width,
+    height: sideways ? v.width : v.height,
     vcodec: v.codec_name,
     hasAudio: !!a,
     fps: parseFps(v.avg_frame_rate) || parseFps(v.r_frame_rate) || 30,
@@ -112,6 +115,9 @@ async function probe(file) {
 // 保存先は、ツールのフォルダの外(AppData)。ツールを入れ直しても消えない。
 const HEIGHTS = [0, 360, 480, 540, 720, 1080];
 // 処理の速さ: 速いほど早く終わるが、同じ画質でも、ファイルが少し大きくなる
+// 動画の向き: 90 = 右に90度(時計回り)、270 = 左に90度、180 = 上下さかさま
+const ROTATIONS = [0, 90, 180, 270];
+const ROTATE_FILTER = { 0: null, 90: 'transpose=1', 270: 'transpose=2', 180: 'hflip,vflip' };
 const PRESETS = { fast: 'veryfast', normal: 'medium', slow: 'slow' };
 const DEFAULT_SETTINGS = { height: 720, crf: 26, audio: true, merge: true, speed: 'fast' };
 const SETTINGS_FILE = path.join(process.env.APPDATA || __dirname, 'mp4-cutter', 'settings.json');
@@ -195,7 +201,10 @@ function runFfmpeg(args, dur, failMsg) {
 function encodeOne(src, seg, opt, outFile) {
   const dur = seg.end - seg.start;
   const args = ['-hide_banner', '-y', '-ss', String(seg.start), '-i', src, '-t', String(dur), '-map', '0:v:0', '-map', '0:a:0?'];
-  if (opt.height > 0) args.push('-vf', `scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
+  const vf = [];
+  if (ROTATE_FILTER[opt.rotate]) vf.push(ROTATE_FILTER[opt.rotate]); // 向きを変えてから、大きさを決める
+  if (opt.height > 0) vf.push(`scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
+  if (vf.length) args.push('-vf', vf.join(','));
   args.push('-c:v', 'libx264', '-preset', presetOf(opt), '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
   if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k');
   else args.push('-an');
@@ -210,7 +219,8 @@ function encodeWhole(info, opt, W, H, fps, outFile) {
   if (silent) args.push('-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo');
   args.push('-map', '0:v:0');
   if (opt.audio) args.push('-map', silent ? '1:a:0' : '0:a:0');
-  args.push('-vf', `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps}`);
+  const rot = ROTATE_FILTER[opt.rotate] ? ROTATE_FILTER[opt.rotate] + ',' : '';
+  args.push('-vf', `${rot}scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps}`);
   args.push('-c:v', 'libx264', '-preset', presetOf(opt), '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
   if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k', '-ar', '44100', '-ac', '2');
   else args.push('-an');
@@ -287,9 +297,11 @@ async function runJoin(body) {
     fs.mkdirSync(body.outDir, { recursive: true });
     work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
     const even = (x) => Math.max(2, Math.round(x / 2) * 2);
-    const tallest = infos.reduce((a, b) => (b.height > a.height ? b : a));
-    const H = even(body.height > 0 ? Math.min(body.height, tallest.height) : tallest.height);
-    const W = even((H * tallest.width) / tallest.height);
+    const turned = body.rotate === 90 || body.rotate === 270; // 90度回すと、縦と横が入れ替わる
+    const sizes = infos.map((i) => (turned ? { w: i.height, h: i.width } : { w: i.width, h: i.height }));
+    const tallest = sizes.reduce((a, b) => (b.h > a.h ? b : a));
+    const H = even(body.height > 0 ? Math.min(body.height, tallest.h) : tallest.h);
+    const W = even((H * tallest.w) / tallest.h);
     const fps = Math.round(Math.min(30, Math.max(...infos.map((i) => i.fps))) * 1000) / 1000;
     for (let i = 0; i < n; i++) {
       job.index = i;
@@ -388,6 +400,7 @@ function validateRun(b) {
   if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
   if (b.speed !== undefined && !Object.hasOwn(PRESETS, b.speed)) throw new Error('処理の速さが正しくありません');
+  if (b.rotate !== undefined && !ROTATIONS.includes(b.rotate)) throw new Error('向きが正しくありません');
   if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
 }
 
@@ -399,6 +412,7 @@ function validateJoin(b) {
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
   if (typeof b.audio !== 'boolean') throw new Error('音の設定が正しくありません');
   if (b.speed !== undefined && !Object.hasOwn(PRESETS, b.speed)) throw new Error('処理の速さが正しくありません');
+  if (b.rotate !== undefined && !ROTATIONS.includes(b.rotate)) throw new Error('向きが正しくありません');
   if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
 }
 
