@@ -198,12 +198,14 @@ function runFfmpeg(args, dur, failMsg) {
 }
 
 // 1か所ずつ ffmpeg で切り出して、解像度と画質を下げて書き出す
-function encodeOne(src, seg, opt, outFile) {
+// frame: 向きがばらばらの範囲をつなげるとき、全部をそろえる大きさ({ W, H })。ふつうは null
+function encodeOne(src, seg, opt, outFile, frame) {
   const dur = seg.end - seg.start;
   const args = ['-hide_banner', '-y', '-ss', String(seg.start), '-i', src, '-t', String(dur), '-map', '0:v:0', '-map', '0:a:0?'];
   const vf = [];
-  if (ROTATE_FILTER[opt.rotate]) vf.push(ROTATE_FILTER[opt.rotate]); // 向きを変えてから、大きさを決める
-  if (opt.height > 0) vf.push(`scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
+  if (ROTATE_FILTER[seg.rotate || 0]) vf.push(ROTATE_FILTER[seg.rotate || 0]); // 向きを変えてから、大きさを決める
+  if (frame) vf.push(`scale=${frame.W}:${frame.H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${frame.W}:${frame.H}:(ow-iw)/2:(oh-ih)/2,setsar=1`);
+  else if (opt.height > 0) vf.push(`scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
   if (vf.length) args.push('-vf', vf.join(','));
   args.push('-c:v', 'libx264', '-preset', presetOf(opt), '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
   if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k');
@@ -250,6 +252,17 @@ function concatSegments(dir, count, outFile) {
   });
 }
 
+// つなげた動画全体の大きさを決める。sizes: 向きを変えたあとの、各動画の大きさ({ w, h })
+// 横長の動画を基準にする(縦長の動画は、左右に黒い帯をつけて入れる)。横長が1本もなければ、縦が一番大きい動画に合わせる
+function frameFor(sizes, height) {
+  const even = (x) => Math.max(2, Math.round(x / 2) * 2);
+  const landscape = sizes.filter((z) => z.w >= z.h);
+  const tallest = (landscape.length ? landscape : sizes).reduce((a, b) => (b.h > a.h ? b : a));
+  const H = even(height > 0 ? Math.min(height, tallest.h) : tallest.h);
+  return { W: even((H * tallest.w) / tallest.h), H };
+}
+const turnedSize = (i, rot) => (rot === 90 || rot === 270 ? { w: i.height, h: i.width } : { w: i.width, h: i.height }); // 90度回すと、縦と横が入れ替わる
+
 async function runJob(body) {
   const info = state.info;
   const merge = !!body.merge && body.segments.length > 1;
@@ -258,14 +271,17 @@ async function runJob(body) {
   try {
     fs.mkdirSync(body.outDir, { recursive: true });
     const base = path.parse(info.file).name;
-    const tag = body.height > 0 ? `_${body.height}p` : '';
+    // 範囲ごとに向きが違うものをつなげるときは、全部の大きさをそろえる
+    const mixed = merge && new Set(body.segments.map((s) => s.rotate || 0)).size > 1;
+    const frame = mixed ? frameFor(body.segments.map((s) => turnedSize(info, s.rotate || 0)), body.height) : null;
+    const tag = frame ? `_${frame.H}p` : body.height > 0 ? `_${body.height}p` : '';
     if (merge) work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
     for (let i = 0; i < body.segments.length; i++) {
       const seg = body.segments[i];
       job.index = i;
       job.percent = 0;
       const out = merge ? path.join(work, `seg${i}.mp4`) : uniquePath(path.join(body.outDir, `${base}_${stamp(seg.start)}-${stamp(seg.end)}${tag}.mp4`));
-      await encodeOne(info.file, seg, body, out);
+      await encodeOne(info.file, seg, body, out, frame);
       if (!merge) job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: seg.end - seg.start });
       job.percent = 100;
     }
@@ -296,15 +312,8 @@ async function runJoin(body) {
   try {
     fs.mkdirSync(body.outDir, { recursive: true });
     work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
-    const even = (x) => Math.max(2, Math.round(x / 2) * 2);
     const rots = body.rotates || infos.map(() => 0); // 動画ごとの向き
-    // 90度回すと、縦と横が入れ替わる
-    const sizes = infos.map((i, k) => (rots[k] === 90 || rots[k] === 270 ? { w: i.height, h: i.width } : { w: i.width, h: i.height }));
-    // 全体の大きさは、横長の動画を基準にする(縦長の動画は、左右に黒い帯をつけて入れる)。横長が1本もなければ、縦が一番大きい動画に合わせる
-    const landscape = sizes.filter((z) => z.w >= z.h);
-    const tallest = (landscape.length ? landscape : sizes).reduce((a, b) => (b.h > a.h ? b : a));
-    const H = even(body.height > 0 ? Math.min(body.height, tallest.h) : tallest.h);
-    const W = even((H * tallest.w) / tallest.h);
+    const { W, H } = frameFor(infos.map((i, k) => turnedSize(i, rots[k])), body.height);
     const fps = Math.round(Math.min(30, Math.max(...infos.map((i) => i.fps))) * 1000) / 1000;
     for (let i = 0; i < n; i++) {
       job.index = i;
@@ -397,6 +406,7 @@ function validateRun(b) {
   if (job.running) throw new Error('いま書き出し中です');
   if (!Array.isArray(b.segments) || b.segments.length === 0 || b.segments.length > 200) throw new Error('範囲を追加してください');
   for (const s of b.segments) {
+    if (s.rotate !== undefined && !ROTATIONS.includes(s.rotate)) throw new Error('向きが正しくありません');
     if (!(Number.isFinite(s.start) && Number.isFinite(s.end) && s.start >= 0 && s.end > s.start && s.end <= state.info.duration + 1))
       throw new Error('範囲の時間が正しくありません');
   }
