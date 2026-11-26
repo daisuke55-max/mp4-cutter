@@ -33,6 +33,8 @@
   .grow { flex: 1; }
   .info { background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; font-size: 14px; margin-top: 8px; }
   video { width: 100%; max-height: 52vh; background: #000; border-radius: 8px; }
+  #pvBox.on { position: relative; overflow: hidden; background: #000; border-radius: 8px; margin: 0 auto; }
+  #pvBox.on video { position: absolute; left: 50%; top: 50%; max-height: none; border-radius: 0; transform-origin: center; }
   .pos { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: bold; margin: 0 8px; }
   .hint { color: var(--sub); font-size: 13px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -66,7 +68,12 @@
 
   <section id="editor" hidden>
     <h2><span>2</span>範囲を決める<span style="background:none;color:var(--sub);width:auto;font-size:14px;margin-left:8px" id="curName"></span></h2>
-    <video id="v" controls preload="metadata"></video>
+    <div id="pvBox"><video id="v" controls preload="metadata"></video></div>
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="pvOn" checked> 仕上がりの形で見る</label>
+      <button id="pvPlay">再生 / 一時停止</button>
+    </div>
+    <p class="hint" id="pvHint">いまの「向き」「枠への入れ方」で、書き出したときの画面の形に近い見た目を出します(見た目の確認用です。実際の書き出しと、少しずれることがあります)。再生は、「再生 / 一時停止」か、スペースキーでできます。</p>
     <p class="hint" id="noPlay" hidden>この動画は、ブラウザでは再生できないようです。下の時間の欄に、直接入力してください。</p>
     <div class="row">
       <button data-seek="-600">−10分</button>
@@ -194,7 +201,7 @@
   const dirOf = (f) => f.replace(/[\\/][^\\/]+$/, '');
   const ROTS = [[0, 'そのまま'], [90, '右に90度'], [270, '左に90度'], [180, '180度']];
   // 枠への入れ方(つなげたときの画面の大きさに対して)。大きくすると、はみ出た所は切れる
-  const FITS = [['fit', '枠に収める'], ['125', '少し大きく(125%)'], ['150', '大きく(150%)'], ['fill', '枠いっぱい']];
+  const FITS = [['fit', '枠に収める(100%)'], ['110', '110%'], ['120', '120%'], ['130', '130%'], ['140', '140%'], ['150', '150%'], ['fill', '枠いっぱい']];
   FITS.forEach(([n, t]) => $('addFit').add(new Option(t, n)));
   const button = (label, fn, off) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; return b; };
 
@@ -266,12 +273,55 @@
       $('noPlay').hidden = true;
       v.src = `/video?t=${token}&f=${encodeURIComponent(i.file)}`;
     }
+    pv = null; // 「見る」で見ていた素材の設定は、動画を変えたら、やめる
     $('curName').textContent = i.name;
     $('startT').value = '0:00:00';
     $('endT').value = fmt(i.duration);
     $('editor').hidden = false;
     renderVideos();
+    updatePreview();
   }
+
+  // ---- 仕上がりの形のプレビュー(見た目の確認用。書き出しと同じ決まりで、枠の形と、向き・大きさを計算する) ----
+  let pv = null; // 一覧の「見る」で選んだ素材({ clip })。なければ、「範囲を追加」の横の設定で見る
+  const even = (x) => Math.max(2, Math.round(x / 2) * 2);
+  const turned = (i, rot) => (rot === 90 || rot === 270 ? { w: i.height, h: i.width } : { w: i.width, h: i.height });
+  function frameFor(sizes, height) { // サーバーの frameFor と同じ
+    const land = sizes.filter((z) => z.w >= z.h);
+    const t = (land.length ? land : sizes).reduce((a, b) => (b.h > a.h ? b : a));
+    const H = even(height > 0 ? Math.min(height, t.h) : t.h);
+    return { W: even((H * t.w) / t.h), H };
+  }
+  function updatePreview() {
+    const box = $('pvBox');
+    const on = $('pvOn').checked && !!cur;
+    $('pvPlay').hidden = $('pvHint').hidden = !on;
+    v.controls = !on;
+    if (!on) { box.className = ''; box.removeAttribute('style'); v.removeAttribute('style'); return; }
+    const s = pv && clips.includes(pv.clip) ? { rot: pv.clip.rotate || 0, fit: pv.clip.fit || 'fit' } : { rot: Number($('addRot').value), fit: $('addFit').value };
+    const viaClip = s !== null && pv && clips.includes(pv.clip);
+    // 書き出し後の画面の大きさ: つなげるなら、一覧の全部(まだ追加していないときは、追加したものを入れて)から決める。つなげないなら、その素材の大きさ
+    let sizes = clips.map((c) => { const vid = videos.find((x) => x.file === c.file); return vid ? turned(vid, c.rotate || 0) : null; }).filter(Boolean);
+    if (!viaClip) sizes = clips.filter((c) => !(c.file === cur.file && c.auto)).map((c) => turned(videos.find((x) => x.file === c.file) || cur, c.rotate || 0)).concat([turned(cur, s.rot)]);
+    const own = viaClip ? turned(videos.find((x) => x.file === pv.clip.file) || cur, s.rot) : turned(cur, s.rot);
+    const fr = frameFor($('merge').checked && sizes.length > 1 ? sizes : [own], Number($('height').value));
+    const vid = viaClip ? videos.find((x) => x.file === pv.clip.file) || cur : cur;
+    box.className = 'on';
+    box.style.width = `min(100%, ${(52 * fr.W / fr.H).toFixed(2)}vh)`;
+    box.style.aspectRatio = `${fr.W} / ${fr.H}`;
+    const bw = box.clientWidth, bh = box.clientHeight;
+    const r = turned(vid, s.rot);
+    const fitScale = Math.min(bw / r.w, bh / r.h);
+    const sc = s.fit === 'fill' ? Math.max(bw / r.w, bh / r.h) : s.fit === 'fit' ? fitScale : (fitScale * Number(s.fit)) / 100;
+    v.style.width = vid.width + 'px';
+    v.style.height = vid.height + 'px';
+    v.style.transform = `translate(-50%, -50%) rotate(${s.rot === 270 ? -90 : s.rot}deg) scale(${sc})`;
+  }
+  $('pvOn').onchange = updatePreview;
+  $('pvPlay').onclick = () => (v.paused ? v.play() : v.pause());
+  ['addRot', 'addFit'].forEach((id) => $(id).addEventListener('change', () => { pv = null; updatePreview(); }));
+  $('height').addEventListener('change', updatePreview);
+  if (window.ResizeObserver) new ResizeObserver(() => { if ($('pvBox').className === 'on') updatePreview(); }).observe($('editor'));
   v.addEventListener('error', () => ($('noPlay').hidden = false));
   v.addEventListener('timeupdate', () => ($('pos').textContent = fmt(v.currentTime)));
   v.addEventListener('seeked', () => ($('pos').textContent = fmt(v.currentTime)));
@@ -322,12 +372,12 @@
       const sel = document.createElement('select'); // この素材だけの向き
       ROTS.forEach(([n, t]) => sel.add(new Option(t, n)));
       sel.value = String(c.rotate || 0);
-      sel.onchange = () => (c.rotate = Number(sel.value));
+      sel.onchange = () => { c.rotate = Number(sel.value); updatePreview(); };
       tr.children[5].appendChild(sel);
       const fsel = document.createElement('select'); // この素材だけの、枠への入れ方
       FITS.forEach(([n, t]) => fsel.add(new Option(t, n)));
       fsel.value = c.fit || 'fit';
-      fsel.onchange = () => (c.fit = fsel.value);
+      fsel.onchange = () => { c.fit = fsel.value; updatePreview(); };
       tr.children[6].appendChild(fsel);
       const swap = (a, b) => { [clips[a], clips[b]] = [clips[b], clips[a]]; renderClips(); };
       tr.lastChild.append(
@@ -335,6 +385,8 @@
           const vid = videos.find((x) => x.file === c.file);
           if (vid && vid !== cur) { showVideo(vid); v.addEventListener('loadedmetadata', () => (v.currentTime = c.start), { once: true }); }
           else v.currentTime = c.start;
+          pv = { clip: c }; // この素材の向き・枠への入れ方で、仕上がりを見る
+          updatePreview();
         }), ' ',
         button('↑', () => swap(i, i - 1), i === 0), ' ',
         button('↓', () => swap(i, i + 1), i === clips.length - 1), ' ',
@@ -349,6 +401,8 @@
       : '';
     $('merge').disabled = clips.length < 2;
     $('run').disabled = !clips.length;
+    if (pv && !clips.includes(pv.clip)) pv = null;
+    updatePreview();
   }
 
   // ---- 4. 書き出す ----

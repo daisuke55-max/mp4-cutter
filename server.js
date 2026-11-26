@@ -114,8 +114,8 @@ const HEIGHTS = [0, 360, 480, 540, 720, 1080];
 const ROTATIONS = [0, 90, 180, 270];
 const ROTATE_FILTER = { 0: null, 90: 'transpose=1', 270: 'transpose=2', 180: 'hflip,vflip' };
 // 処理の速さ: 速いほど早く終わるが、同じ画質でも、ファイルが少し大きくなる
-// 枠への入れ方: fit = 枠に収める(余った所は黒)、125 / 150 = その割合に大きくして、はみ出た所は切る、fill = 枠いっぱいに広げて、はみ出た所は切る
-const FITS = ['fit', '125', '150', 'fill'];
+// 枠への入れ方: fit = 枠に収める(余った所は黒)、110〜150 = その割合(%)に大きくして、はみ出た所は切る、fill = 枠いっぱいに広げて、はみ出た所は切る
+const FITS = ['fit', '110', '120', '130', '140', '150', 'fill'];
 const PRESETS = { fast: 'veryfast', normal: 'medium', slow: 'slow' };
 const DEFAULT_SETTINGS = { height: 720, crf: 26, audio: true, merge: true, speed: 'fast' };
 const SETTINGS_FILE = path.join(process.env.APPDATA || __dirname, 'mp4-cutter', 'settings.json');
@@ -201,7 +201,7 @@ function scaleToFrame(ctx, fit) {
   const { W, H } = ctx;
   let f;
   if (fit === 'fill') f = `scale=${W}:${H}:force_original_aspect_ratio=increase:force_divisible_by=2,crop=${W}:${H}`;
-  else if (fit === '125' || fit === '150') {
+  else if (fit !== 'fit') {
     const k = Number(fit) / 100;
     f = `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,scale=trunc(iw*${k}/2)*2:trunc(ih*${k}/2)*2,crop=min(iw\\,${W}):min(ih\\,${H}),pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`;
   } else f = `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`;
