@@ -65,12 +65,8 @@ function psDialog(script) {
     r.out.replace(/^﻿/, '').trim(),
   );
 }
-const PICK_FILE =
-  "$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='動画を選んでください';" +
-  "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts;*.rm;*.rmvb;*.wmv;*.flv|すべてのファイル|*.*';" +
-  "if($d.ShowDialog($f) -eq 'OK'){$d.FileName}";
 const PICK_FILES =
-  "$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='つなげたい動画を、まとめて選んでください(Ctrl を押しながらクリック)';$d.Multiselect=$true;" +
+  "$d=New-Object System.Windows.Forms.OpenFileDialog;$d.Title='使う動画を、選んでください(まとめて選ぶときは、Ctrl を押しながらクリック)';$d.Multiselect=$true;" +
   "$d.Filter='動画ファイル|*.mp4;*.mov;*.mkv;*.avi;*.m4v;*.webm;*.ts;*.mts;*.m2ts;*.rm;*.rmvb;*.wmv;*.flv|すべてのファイル|*.*';" +
   'if($d.ShowDialog($f) -eq \'OK\'){$d.FileNames -join "`n"}';
 const PICK_FOLDER =
@@ -114,10 +110,10 @@ async function probe(file) {
 // 解像度・画質などの選択を覚えておく(次に起動したときも、同じ設定で始まる)。
 // 保存先は、ツールのフォルダの外(AppData)。ツールを入れ直しても消えない。
 const HEIGHTS = [0, 360, 480, 540, 720, 1080];
-// 処理の速さ: 速いほど早く終わるが、同じ画質でも、ファイルが少し大きくなる
 // 動画の向き: 90 = 右に90度(時計回り)、270 = 左に90度、180 = 上下さかさま
 const ROTATIONS = [0, 90, 180, 270];
 const ROTATE_FILTER = { 0: null, 90: 'transpose=1', 270: 'transpose=2', 180: 'hflip,vflip' };
+// 処理の速さ: 速いほど早く終わるが、同じ画質でも、ファイルが少し大きくなる
 const PRESETS = { fast: 'veryfast', normal: 'medium', slow: 'slow' };
 const DEFAULT_SETTINGS = { height: 720, crf: 26, audio: true, merge: true, speed: 'fast' };
 const SETTINGS_FILE = path.join(process.env.APPDATA || __dirname, 'mp4-cutter', 'settings.json');
@@ -144,8 +140,8 @@ function saveSettings(s) {
   } catch { /* 保存できなくても、ツールは使える */ }
 }
 
-// いま選んでいる動画と、書き出しの状況
-const state = { info: null, probed: new Map() }; // probed: つなげる用に調べた動画(場所 → 情報)
+// 読み込んだ動画(場所 → 情報)と、書き出しの状況
+const state = { probed: new Map() };
 const job = { running: false, cancel: false, merging: false, total: 0, index: 0, percent: 0, results: [], error: null, child: null };
 let lastPing = Date.now();
 
@@ -197,41 +193,36 @@ function runFfmpeg(args, dur, failMsg) {
   });
 }
 
-// 1か所ずつ ffmpeg で切り出して、解像度と画質を下げて書き出す
-// frame: 向きがばらばらの範囲をつなげるとき、全部をそろえる大きさ({ W, H })。ふつうは null
-function encodeOne(src, seg, opt, outFile, frame) {
-  const dur = seg.end - seg.start;
-  const args = ['-hide_banner', '-y', '-ss', String(seg.start), '-i', src, '-t', String(dur), '-map', '0:v:0', '-map', '0:a:0?'];
+// 1つの素材(動画の一部、または動画まるごと)を、解像度と画質を下げて書き出す。
+// ctx: 向きや大きさの違う素材をつなげるとき、全部をそろえる大きさとコマ数({ W, H, fps })。ふつうは null
+function encodeClip(info, clip, opt, ctx, outFile) {
+  const dur = clip.end - clip.start;
+  const whole = clip.start <= 0 && clip.end >= info.duration; // 動画まるごとのときは、長さを切らない
+  const silent = !!ctx && opt.audio && !info.hasAudio; // 音のない動画には無音をつける(つなげたとき、音がずれないように)
+  const args = ['-hide_banner', '-y'];
+  if (clip.start > 0) args.push('-ss', String(clip.start));
+  args.push('-i', info.file);
+  if (silent) args.push('-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo');
+  args.push('-map', '0:v:0');
+  if (opt.audio) args.push('-map', silent ? '1:a:0' : ctx ? '0:a:0' : '0:a:0?');
+  if (!whole) args.push('-t', String(dur));
   const vf = [];
-  if (ROTATE_FILTER[seg.rotate || 0]) vf.push(ROTATE_FILTER[seg.rotate || 0]); // 向きを変えてから、大きさを決める
-  if (frame) vf.push(`scale=${frame.W}:${frame.H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${frame.W}:${frame.H}:(ow-iw)/2:(oh-ih)/2,setsar=1`);
+  const rot = ROTATE_FILTER[clip.rotate || 0];
+  if (rot) vf.push(rot); // 向きを変えてから、大きさを決める
+  if (ctx) vf.push(`scale=${ctx.W}:${ctx.H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${ctx.W}:${ctx.H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${ctx.fps}`);
   else if (opt.height > 0) vf.push(`scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
   if (vf.length) args.push('-vf', vf.join(','));
   args.push('-c:v', 'libx264', '-preset', presetOf(opt), '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
-  if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k');
-  else args.push('-an');
-  args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outFile);
-  return runFfmpeg(args, dur, '書き出しに失敗しました');
-}
-
-// 動画を1本まるごと、決まった大きさ・コマ数・音の形にそろえて書き出す(つなげる前の準備)
-function encodeWhole(info, opt, W, H, fps, outFile) {
-  const args = ['-hide_banner', '-y', '-i', info.file];
-  const silent = opt.audio && !info.hasAudio; // 音のない動画には無音をつける(つなげたとき、音がずれないように)
-  if (silent) args.push('-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo');
-  args.push('-map', '0:v:0');
-  if (opt.audio) args.push('-map', silent ? '1:a:0' : '0:a:0');
-  const rot = ROTATE_FILTER[opt.rotate] ? ROTATE_FILTER[opt.rotate] + ',' : '';
-  args.push('-vf', `${rot}scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps}`);
-  args.push('-c:v', 'libx264', '-preset', presetOf(opt), '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
-  if (opt.audio) args.push('-c:a', 'aac', '-b:a', '96k', '-ar', '44100', '-ac', '2');
-  else args.push('-an');
+  if (opt.audio) {
+    args.push('-c:a', 'aac', '-b:a', '96k');
+    if (ctx) args.push('-ar', '44100', '-ac', '2');
+  } else args.push('-an');
   if (silent) args.push('-shortest');
   args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outFile);
-  return runFfmpeg(args, info.duration, '書き出しに失敗しました(' + info.name + ')');
+  return runFfmpeg(args, dur, '書き出しに失敗しました(' + info.name + ')');
 }
 
-// 同じ設定で書き出した範囲どうしを、作り直さずにそのままつなげる(速い)
+// 同じ設定で書き出した素材どうしを、作り直さずにそのままつなげる(速い)
 function concatSegments(dir, count, outFile) {
   return new Promise((resolve, reject) => {
     const list = Array.from({ length: count }, (_, i) => `file 'seg${i}.mp4'`).join('\n') + '\n';
@@ -252,8 +243,8 @@ function concatSegments(dir, count, outFile) {
   });
 }
 
-// つなげた動画全体の大きさを決める。sizes: 向きを変えたあとの、各動画の大きさ({ w, h })
-// 横長の動画を基準にする(縦長の動画は、左右に黒い帯をつけて入れる)。横長が1本もなければ、縦が一番大きい動画に合わせる
+// つなげた動画全体の大きさを決める。sizes: 向きを変えたあとの、各素材の大きさ({ w, h })
+// 横長の素材を基準にする(縦長の素材は、左右に黒い帯をつけて入れる)。横長が1つもなければ、縦が一番大きい素材に合わせる
 function frameFor(sizes, height) {
   const even = (x) => Math.max(2, Math.round(x / 2) * 2);
   const landscape = sizes.filter((z) => z.w >= z.h);
@@ -263,77 +254,52 @@ function frameFor(sizes, height) {
 }
 const turnedSize = (i, rot) => (rot === 90 || rot === 270 ? { w: i.height, h: i.width } : { w: i.width, h: i.height }); // 90度回すと、縦と横が入れ替わる
 
+// 素材の一覧(clips)を、順番に書き出す。merge なら、1つのファイルにつなげる
 async function runJob(body) {
-  const info = state.info;
-  const merge = !!body.merge && body.segments.length > 1;
-  Object.assign(job, { running: true, cancel: false, total: body.segments.length, index: 0, percent: 0, merging: false, results: [], error: null });
-  let work = null;
-  try {
-    fs.mkdirSync(body.outDir, { recursive: true });
-    const base = path.parse(info.file).name;
-    // 範囲ごとに向きが違うものをつなげるときは、全部の大きさをそろえる
-    const mixed = merge && new Set(body.segments.map((s) => s.rotate || 0)).size > 1;
-    const frame = mixed ? frameFor(body.segments.map((s) => turnedSize(info, s.rotate || 0)), body.height) : null;
-    const tag = frame ? `_${frame.H}p` : body.height > 0 ? `_${body.height}p` : '';
-    if (merge) work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
-    for (let i = 0; i < body.segments.length; i++) {
-      const seg = body.segments[i];
-      job.index = i;
-      job.percent = 0;
-      const out = merge ? path.join(work, `seg${i}.mp4`) : uniquePath(path.join(body.outDir, `${base}_${stamp(seg.start)}-${stamp(seg.end)}${tag}.mp4`));
-      await encodeOne(info.file, seg, body, out, frame);
-      if (!merge) job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: seg.end - seg.start });
-      job.percent = 100;
-    }
-    if (merge) {
-      job.merging = true;
-      const total = body.segments.reduce((a, s) => a + (s.end - s.start), 0);
-      const out = uniquePath(path.join(body.outDir, `${base}_結合${body.segments.length}か所${tag}.mp4`));
-      await concatSegments(work, body.segments.length, out);
-      job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: total });
-    }
-  } catch (e) {
-    job.error = e.message;
-  } finally {
-    if (work) {
-      try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* 残っても害はない */ }
-    }
-    job.merging = false;
-    job.running = false;
-  }
-}
-
-// 複数の動画を、順番に1本の mp4 につなげる(大きさや形式がばらばらでも、そろえてからつなげる)
-async function runJoin(body) {
-  const infos = body.files.map((f) => state.probed.get(f));
-  const n = infos.length;
+  const clips = body.clips.map((c) => {
+    const info = state.probed.get(c.file);
+    return { file: c.file, start: c.start, end: Math.min(c.end, info.duration), rotate: c.rotate || 0, info };
+  });
+  const n = clips.length;
+  const merge = !!body.merge && n > 1;
   Object.assign(job, { running: true, cancel: false, total: n, index: 0, percent: 0, merging: false, results: [], error: null });
   let work = null;
   try {
     fs.mkdirSync(body.outDir, { recursive: true });
-    work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
-    const rots = body.rotates || infos.map(() => 0); // 動画ごとの向き
-    const { W, H } = frameFor(infos.map((i, k) => turnedSize(i, rots[k])), body.height);
-    const fps = Math.round(Math.min(30, Math.max(...infos.map((i) => i.fps))) * 1000) / 1000;
+    // 同じ動画の、同じ向きの範囲だけをつなげるときは、そろえる必要がない。それ以外は、全部の大きさとコマ数をそろえる
+    const uniform = clips.every((c) => c.file === clips[0].file && c.rotate === clips[0].rotate);
+    let ctx = null;
+    if (merge && !uniform) {
+      const f = frameFor(clips.map((c) => turnedSize(c.info, c.rotate)), body.height);
+      const fps = Math.round(Math.min(30, Math.max(...clips.map((c) => c.info.fps))) * 1000) / 1000;
+      ctx = { ...f, fps };
+    }
+    const tag = ctx ? `_${ctx.H}p` : body.height > 0 ? `_${body.height}p` : '';
+    if (merge) work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
     for (let i = 0; i < n; i++) {
+      const c = clips[i];
       job.index = i;
       job.percent = 0;
-      await encodeWhole(infos[i], { ...body, rotate: rots[i] }, W, H, fps, path.join(work, `seg${i}.mp4`));
+      let out;
+      if (merge) out = path.join(work, `seg${i}.mp4`);
+      else {
+        const base = path.parse(c.file).name;
+        const whole = c.start <= 0 && c.end >= c.info.duration;
+        out = uniquePath(path.join(body.outDir, whole ? `${base}${tag || '_変換'}.mp4` : `${base}_${stamp(c.start)}-${stamp(c.end)}${tag}.mp4`));
+      }
+      await encodeClip(c.info, c, body, ctx, out);
+      if (!merge) job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: c.end - c.start, src: c.info.file });
       job.percent = 100;
     }
-    const total = infos.reduce((a, i) => a + i.duration, 0);
-    const base = path.parse(infos[0].file).name;
-    let out;
-    if (n === 1) {
-      // 1本だけのときは、つなげずに、そのまま mp4 として保存する
-      out = uniquePath(path.join(body.outDir, `${base}_${H}p.mp4`));
-      fs.renameSync(path.join(work, 'seg0.mp4'), out);
-    } else {
+    if (merge) {
       job.merging = true;
-      out = uniquePath(path.join(body.outDir, `${base}_ほか${n - 1}本を結合_${H}p.mp4`));
+      const files = new Set(clips.map((c) => c.file));
+      const base = path.parse(clips[0].file).name;
+      const name = files.size === 1 ? `${base}_結合${n}か所${tag}.mp4` : `${base}_ほか${files.size - 1}本を結合${tag}.mp4`;
+      const out = uniquePath(path.join(body.outDir, name));
       await concatSegments(work, n, out);
+      job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: clips.reduce((a, c) => a + (c.end - c.start), 0) });
     }
-    job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: total });
   } catch (e) {
     job.error = e.message;
   } finally {
@@ -367,10 +333,11 @@ function readBody(req) {
   });
 }
 
-// プレビュー用に、選んだ動画だけを返す(途中から再生できるよう Range に対応)
-function serveVideo(req, res) {
-  if (!state.info) return res.writeHead(404).end();
-  const f = state.info.file;
+// プレビュー用に、読み込んだ動画だけを返す(途中から再生できるよう Range に対応)
+function serveVideo(req, res, url) {
+  const info = state.probed.get(url.searchParams.get('f') || '');
+  if (!info) return res.writeHead(404).end();
+  const f = info.file;
   const size = fs.statSync(f).size;
   const type = MIME[path.extname(f).toLowerCase()] || 'application/octet-stream';
   const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
@@ -402,31 +369,19 @@ function serveVideo(req, res) {
 }
 
 function validateRun(b) {
-  if (!state.info) throw new Error('先に動画を選んでください');
   if (job.running) throw new Error('いま書き出し中です');
-  if (!Array.isArray(b.segments) || b.segments.length === 0 || b.segments.length > 200) throw new Error('範囲を追加してください');
-  for (const s of b.segments) {
-    if (s.rotate !== undefined && !ROTATIONS.includes(s.rotate)) throw new Error('向きが正しくありません');
-    if (!(Number.isFinite(s.start) && Number.isFinite(s.end) && s.start >= 0 && s.end > s.start && s.end <= state.info.duration + 1))
+  if (!Array.isArray(b.clips) || b.clips.length === 0 || b.clips.length > 200) throw new Error('書き出す範囲を追加してください');
+  for (const c of b.clips) {
+    const info = c && typeof c.file === 'string' ? state.probed.get(c.file) : null;
+    if (!info) throw new Error('動画をもう一度選んでください');
+    if (!(Number.isFinite(c.start) && Number.isFinite(c.end) && c.start >= 0 && c.end > c.start && c.end <= info.duration + 1))
       throw new Error('範囲の時間が正しくありません');
+    if (c.rotate !== undefined && !ROTATIONS.includes(c.rotate)) throw new Error('向きが正しくありません');
   }
   if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
   if (b.speed !== undefined && !Object.hasOwn(PRESETS, b.speed)) throw new Error('処理の速さが正しくありません');
-  if (b.rotate !== undefined && !ROTATIONS.includes(b.rotate)) throw new Error('向きが正しくありません');
-  if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
-}
-
-function validateJoin(b) {
-  if (job.running) throw new Error('いま書き出し中です');
-  if (!Array.isArray(b.files) || b.files.length < 1 || b.files.length > 50) throw new Error('動画を選んでください');
-  if (!b.files.every((f) => typeof f === 'string' && state.probed.has(f))) throw new Error('動画をもう一度選んでください');
-  if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
-  if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');
   if (typeof b.audio !== 'boolean') throw new Error('音の設定が正しくありません');
-  if (b.speed !== undefined && !Object.hasOwn(PRESETS, b.speed)) throw new Error('処理の速さが正しくありません');
-  if (b.rotates !== undefined && !(Array.isArray(b.rotates) && b.rotates.length === b.files.length && b.rotates.every((r) => ROTATIONS.includes(r))))
-    throw new Error('向きが正しくありません');
   if (typeof b.outDir !== 'string' || !path.isAbsolute(b.outDir)) throw new Error('保存先が正しくありません');
 }
 
@@ -445,11 +400,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.headers.origin && req.headers.origin !== `http://127.0.0.1:${server.address().port}`)
       return res.writeHead(403).end();
 
-    if (req.method === 'GET' && url.pathname === '/video') return serveVideo(req, res);
+    if (req.method === 'GET' && url.pathname === '/video') return serveVideo(req, res, url);
     if (req.method === 'GET' && url.pathname === '/api/status')
       return sendJson(res, 200, { running: job.running, merging: job.merging, total: job.total, index: job.index, percent: job.percent, results: job.results, error: job.error });
     if (req.method === 'GET' && url.pathname === '/api/state')
-      return sendJson(res, 200, { info: state.info, ffmpeg: !!FFMPEG && !!FFPROBE, settings: loadSettings() });
+      return sendJson(res, 200, { ffmpeg: !!FFMPEG && !!FFPROBE, settings: loadSettings() });
 
     if (req.method !== 'POST') return res.writeHead(404).end();
     const body = await readBody(req);
@@ -462,20 +417,8 @@ const server = http.createServer(async (req, res) => {
       saveSettings(cleanSettings(body));
       return sendJson(res, 200, { ok: true });
     }
+    // 動画を選ぶ(まとめて選べる)
     if (url.pathname === '/api/pick') {
-      const f = await psDialog(PICK_FILE);
-      if (!f) return sendJson(res, 200, { canceled: true });
-      state.info = await probe(f);
-      return sendJson(res, 200, { info: state.info });
-    }
-    if (url.pathname === '/api/setpath') {
-      const f = String(body.path || '').replace(/^"|"$/g, '').trim();
-      if (!VIDEO_EXT.has(path.extname(f).toLowerCase())) throw new Error('動画のファイルを指定してください');
-      if (!fs.existsSync(f)) throw new Error('ファイルが見つかりません');
-      state.info = await probe(f);
-      return sendJson(res, 200, { info: state.info });
-    }
-    if (url.pathname === '/api/joinpick') {
       const out = await psDialog(PICK_FILES);
       if (!out) return sendJson(res, 200, { canceled: true });
       const files = out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
@@ -492,10 +435,14 @@ const server = http.createServer(async (req, res) => {
       }
       return sendJson(res, 200, { infos });
     }
-    if (url.pathname === '/api/joinrun') {
-      validateJoin(body);
-      runJoin(body);
-      return sendJson(res, 200, { ok: true });
+    // ファイルの場所を貼り付けて、動画を選ぶ
+    if (url.pathname === '/api/setpath') {
+      const f = String(body.path || '').replace(/^"|"$/g, '').trim();
+      if (!VIDEO_EXT.has(path.extname(f).toLowerCase())) throw new Error('動画のファイルを指定してください');
+      if (!fs.existsSync(f)) throw new Error('ファイルが見つかりません');
+      const info = await probe(f);
+      state.probed.set(f, info);
+      return sendJson(res, 200, { info });
     }
     if (url.pathname === '/api/pickfolder') {
       const d = await psDialog(PICK_FOLDER);

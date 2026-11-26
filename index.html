@@ -48,20 +48,24 @@
 <body>
 <main>
   <h1>動画カット・圧縮</h1>
-  <p class="lead">長い動画から必要な部分だけを切り出して、解像度と画質を下げて小さく保存します。元の動画は、そのまま残ります。</p>
+  <p class="lead">動画から必要な部分を切り出して、解像度と画質を下げて小さく保存します。複数の動画を、順番につなげて1つにもできます(rm・wmv・flv などもOK)。元の動画は、そのまま残ります。</p>
 
   <section>
     <h2><span>1</span>動画を選ぶ</h2>
     <div class="row">
-      <button class="primary" id="pick">動画を選ぶ…</button>
+      <button class="primary" id="pick">動画を選ぶ…(まとめて選べます)</button>
       <input type="text" id="pathInput" class="grow" placeholder="またはファイルの場所を貼り付けて Enter">
     </div>
-    <div class="info" id="info" hidden></div>
+    <table id="vidTbl" hidden>
+      <thead><tr><th>動画</th><th>長さ</th><th>大きさ</th><th></th></tr></thead>
+      <tbody id="vids"></tbody>
+    </table>
+    <p class="hint" id="vidHint" hidden>選んだ動画は、何も指定しなければ、まるごと使います。一部だけ使うときは、「範囲を決める」で選びます。</p>
     <div class="err" id="loadErr"></div>
   </section>
 
   <section id="editor" hidden>
-    <h2><span>2</span>残したい範囲を決める</h2>
+    <h2><span>2</span>範囲を決める<span style="background:none;color:var(--sub);width:auto;font-size:14px;margin-left:8px" id="curName"></span></h2>
     <video id="v" controls preload="metadata"></video>
     <p class="hint" id="noPlay" hidden>この動画は、ブラウザでは再生できないようです。下の時間の欄に、直接入力してください。</p>
     <div class="row">
@@ -81,6 +85,8 @@
       <span>〜</span>
       <input type="text" class="time" id="endT" value="" aria-label="終了">
       <button id="setEnd">ここを終了にする (O)</button>
+    </div>
+    <div class="row">
       <label class="hint" for="addRot">向き:</label>
       <select id="addRot">
         <option value="0" selected>そのまま</option>
@@ -89,14 +95,15 @@
         <option value="180">180度</option>
       </select>
       <button class="primary" id="add">この範囲を追加</button>
+      <button id="addWhole">この動画を、まるごと追加</button>
     </div>
-    <p class="hint">キー操作: ← → で1秒、Shift を押しながらで10秒動かせます。スペースで再生・停止。</p>
+    <p class="hint">キー操作: ← → で1秒、Shift を押しながらで10秒動かせます。スペースで再生・停止。向きは、追加したあとでも、下の一覧で変えられます。</p>
   </section>
 
   <section id="listSec" hidden>
-    <h2><span>3</span>残す範囲の一覧</h2>
+    <h2><span>3</span>書き出す内容の一覧</h2>
     <table>
-      <thead><tr><th>#</th><th>開始</th><th>終了</th><th>長さ</th><th>向き</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>動画</th><th>開始</th><th>終了</th><th>長さ</th><th>向き</th><th></th></tr></thead>
       <tbody id="segs"></tbody>
     </table>
     <p class="hint" id="total"></p>
@@ -128,7 +135,7 @@
           <option value="slow">じっくり(時間がかかるが、小さくなる)</option>
         </select></div>
       <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="audio" checked> 音も残す</label>
-      <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="merge" checked> 範囲をつなげて、1つのファイルにする</label>
+      <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="merge" checked> 順番につなげて、1つのファイルにする</label>
     </div>
     <div class="row">
       <div class="field grow"><label for="outDir">保存先のフォルダ</label>
@@ -149,46 +156,6 @@
     </table>
     <p class="hint" id="resSum"></p>
   </section>
-
-  <section>
-    <details id="joinBox">
-      <summary><b>動画を mp4 に変換する / 複数の動画を1つの mp4 につなげる(rm・wmv・flv もOK)</b></summary>
-      <p class="hint">動画を1本だけ選ぶと、そのまま mp4 に変換します。複数選ぶと、大きさや形式がばらばらでも、そろえてから順番につなげます。ここでは、動画をまるごと使います(範囲の切り出しは、上の手順で行います)。</p>
-      <div class="row">
-        <button class="primary" id="jPick">動画を選ぶ(1本でも複数でも)…</button>
-        <button id="jAdd" disabled>動画を追加…</button>
-      </div>
-      <table id="jTbl" hidden>
-        <thead><tr><th>#</th><th>ファイル</th><th>長さ</th><th>大きさ</th><th>向き</th><th></th></tr></thead>
-        <tbody id="jList"></tbody>
-      </table>
-      <p class="hint" id="jTotal"></p>
-      <div class="row">
-        <div class="field"><label for="jHeight">解像度(縦の画素数)</label><select id="jHeight"></select></div>
-        <div class="field"><label for="jCrf">画質(小さいほど、ファイルが小さくなります)</label><select id="jCrf"></select></div>
-        <div class="field"><label for="jSpeed">処理の速さ</label><select id="jSpeed"></select></div>
-        <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="jAudio" checked> 音も残す</label>
-      </div>
-      <div class="row">
-        <div class="field grow"><label for="jOutDir">保存先のフォルダ</label>
-          <div class="row" style="margin:0"><input type="text" id="jOutDir" class="grow"><button id="jPickDir">変更…</button></div></div>
-      </div>
-      <div class="row">
-        <button class="primary" id="jRun" disabled>mp4 にして書き出す</button>
-        <button id="jCancel" hidden>中止</button>
-      </div>
-      <div id="jProg" hidden>
-        <p id="jProgText"></p>
-        <div class="bar"><div id="jProgBar"></div></div>
-      </div>
-      <div class="err" id="jErr"></div>
-      <table id="jResTbl" hidden>
-        <thead><tr><th>書き出したファイル</th><th>大きさ</th><th></th></tr></thead>
-        <tbody id="jRes"></tbody>
-      </table>
-      <p class="hint" id="jResSum"></p>
-    </details>
-  </section>
 </main>
 
 <script>
@@ -196,8 +163,9 @@
   const token = new URLSearchParams(location.search).get('t') || '';
   const $ = (id) => document.getElementById(id);
   const v = $('v');
-  let info = null;
-  let segs = [];
+  let videos = []; // 読み込んだ動画
+  let cur = null; // いま、プレビューで見ている動画
+  let clips = []; // 書き出す内容(動画の一部、または動画まるごと)。auto: 何も指定しないで、まるごと使う印
   let timer = null;
 
   const api = async (path, body) => {
@@ -221,85 +189,160 @@
     return p.reduce((a, n) => a * 60 + n, 0);
   };
   const bytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : (n / 1e6).toFixed(1) + ' MB');
+  const dirOf = (f) => f.replace(/[\\/][^\\/]+$/, '');
+  const ROTS = [[0, 'そのまま'], [90, '右に90度'], [270, '左に90度'], [180, '180度']];
+  const button = (label, fn, off) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; return b; };
 
   setInterval(() => api('/api/ping', {}).catch(() => {}), 5000);
   api('/api/ping', {}).catch(() => {});
 
-  function loaded(i) {
-    info = i;
-    segs = [];
-    $('loadErr').textContent = '';
-    $('info').hidden = false;
-    $('info').textContent = `${i.name} / 長さ ${fmt(i.duration)} / ${i.width}×${i.height} / ${i.vcodec} / ${bytes(i.size)}`;
-    $('pathInput').value = i.file;
-    $('noPlay').hidden = true;
-    v.src = `/video?t=${token}`;
-    $('startT').value = '0:00:00';
-    $('endT').value = fmt(i.duration);
-    $('editor').hidden = false;
-    $('outSec').hidden = false;
-    $('outDir').value = i.file.replace(/[\\/][^\\/]+$/, '');
+  // ---- 1. 動画を選ぶ ----
+  function addVideos(list) {
+    const first = !videos.length;
+    let last = null;
+    for (const i of list) {
+      if (videos.some((x) => x.file === i.file)) continue;
+      videos.push(i);
+      clips.push({ file: i.file, name: i.name, start: 0, end: i.duration, rotate: 0, auto: true }); // 初めは、まるごと使う
+      last = i;
+    }
+    if (!last) return;
+    if (first) $('outDir').value = dirOf(list[0].file); // 保存先は、初めは、1本目の動画と同じフォルダ
     $('resTbl').hidden = true;
     $('resSum').textContent = '';
-    renderSegs();
+    showVideo(last);
+    renderVideos();
+    renderClips();
   }
-  v.addEventListener('error', () => ($('noPlay').hidden = false));
-  v.addEventListener('timeupdate', () => ($('pos').textContent = fmt(v.currentTime)));
-  v.addEventListener('seeked', () => ($('pos').textContent = fmt(v.currentTime)));
-
+  function removeVideo(i) {
+    videos = videos.filter((x) => x !== i);
+    clips = clips.filter((c) => c.file !== i.file);
+    if (cur === i) {
+      cur = null;
+      if (videos.length) showVideo(videos[videos.length - 1]);
+      else { v.removeAttribute('src'); v.load(); $('editor').hidden = true; }
+    }
+    renderVideos();
+    renderClips();
+  }
+  function renderVideos() {
+    $('vidTbl').hidden = !videos.length;
+    $('vidHint').hidden = !videos.length;
+    $('vids').innerHTML = '';
+    videos.forEach((i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td></td><td>${fmt(i.duration)}</td><td>${i.width}×${i.height} / ${bytes(i.size)}</td><td></td>`;
+      tr.firstChild.textContent = i.name + (i === cur ? '(いま見ている動画)' : '');
+      if (i === cur) tr.style.background = 'var(--accent-soft)';
+      tr.lastChild.append(button('範囲を決める', () => showVideo(i), i === cur), ' ', button('削除', () => removeVideo(i)));
+      $('vids').appendChild(tr);
+    });
+  }
   $('pick').onclick = async () => {
+    $('loadErr').textContent = '';
     $('pick').disabled = true;
     try {
       const r = await api('/api/pick', {});
-      if (r.info) loaded(r.info);
+      if (r.infos) addVideos(r.infos);
     } catch (e) { $('loadErr').textContent = e.message; }
     $('pick').disabled = false;
   };
   $('pathInput').addEventListener('keydown', async (e) => {
     if (e.key !== 'Enter') return;
-    try { loaded((await api('/api/setpath', { path: $('pathInput').value })).info); }
+    $('loadErr').textContent = '';
+    try { addVideos([(await api('/api/setpath', { path: $('pathInput').value })).info]); $('pathInput').value = ''; }
     catch (err) { $('loadErr').textContent = err.message; }
   });
 
+  // ---- 2. 範囲を決める ----
+  function showVideo(i) {
+    if (cur !== i) {
+      cur = i;
+      $('noPlay').hidden = true;
+      v.src = `/video?t=${token}&f=${encodeURIComponent(i.file)}`;
+    }
+    $('curName').textContent = i.name;
+    $('startT').value = '0:00:00';
+    $('endT').value = fmt(i.duration);
+    $('editor').hidden = false;
+    renderVideos();
+  }
+  v.addEventListener('error', () => ($('noPlay').hidden = false));
+  v.addEventListener('timeupdate', () => ($('pos').textContent = fmt(v.currentTime)));
+  v.addEventListener('seeked', () => ($('pos').textContent = fmt(v.currentTime)));
   document.querySelectorAll('[data-seek]').forEach((b) => (b.onclick = () => {
-    v.currentTime = Math.min(info.duration, Math.max(0, v.currentTime + Number(b.dataset.seek)));
+    v.currentTime = Math.min(cur.duration, Math.max(0, v.currentTime + Number(b.dataset.seek)));
   }));
   $('setStart').onclick = () => ($('startT').value = fmt(Math.floor(v.currentTime)));
   $('setEnd').onclick = () => ($('endT').value = fmt(Math.ceil(v.currentTime)));
+
+  // 一覧に素材を入れる。何も指定していない、まるごとの素材があれば、その場所に入れ替える。なければ、同じ動画の素材の近く(時間の順)に入れる
+  function insertClip(c) {
+    const ai = clips.findIndex((x) => x.file === c.file && x.auto);
+    if (ai >= 0) { clips.splice(ai, 1, c); return; }
+    let first = -1, last = -1;
+    clips.forEach((x, k) => {
+      if (x.file !== c.file) return;
+      if (first < 0) first = k;
+      if (x.start <= c.start) last = k;
+    });
+    if (last >= 0) clips.splice(last + 1, 0, c);
+    else if (first >= 0) clips.splice(first, 0, c);
+    else clips.push(c);
+  }
   $('add').onclick = () => {
     const s = parse($('startT').value), e = parse($('endT').value);
     if (!(s >= 0 && e > s)) return alert('開始より後の終了時間を入れてください');
-    if (e > info.duration + 1) return alert('終了が、動画の長さを超えています');
-    segs.push({ start: s, end: Math.min(e, info.duration), rotate: Number($('addRot').value) });
-    segs.sort((a, b) => a.start - b.start);
+    if (e > cur.duration + 1) return alert('終了が、動画の長さを超えています');
+    insertClip({ file: cur.file, name: cur.name, start: s, end: Math.min(e, cur.duration), rotate: Number($('addRot').value), auto: false });
     $('startT').value = fmt(e);
-    $('endT').value = fmt(info.duration);
-    renderSegs();
+    $('endT').value = fmt(cur.duration);
+    renderClips();
   };
-  function renderSegs() {
-    $('listSec').hidden = !segs.length;
+  $('addWhole').onclick = () => {
+    insertClip({ file: cur.file, name: cur.name, start: 0, end: cur.duration, rotate: Number($('addRot').value), auto: false });
+    renderClips();
+  };
+
+  // ---- 3. 書き出す内容の一覧 ----
+  function renderClips() {
+    $('listSec').hidden = $('outSec').hidden = !clips.length;
     $('segs').innerHTML = '';
     let sum = 0;
-    segs.forEach((s, i) => {
-      sum += s.end - s.start;
+    clips.forEach((c, i) => {
+      sum += c.end - c.start;
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td>${fmt(s.start)}</td><td>${fmt(s.end)}</td><td>${fmt(s.end - s.start)}</td><td></td><td></td>`;
-      const sel = document.createElement('select'); // この範囲だけの向き
-      [[0, 'そのまま'], [90, '右に90度'], [270, '左に90度'], [180, '180度']].forEach(([n, t]) => sel.add(new Option(t, n)));
-      sel.value = String(s.rotate || 0);
-      sel.onchange = () => (s.rotate = Number(sel.value));
-      tr.children[4].appendChild(sel);
-      const go = document.createElement('button'); go.textContent = '見る'; go.onclick = () => (v.currentTime = s.start);
-      const del = document.createElement('button'); del.textContent = '削除'; del.onclick = () => { segs.splice(i, 1); renderSegs(); };
-      tr.lastChild.append(go, ' ', del);
+      tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(c.start)}</td><td>${fmt(c.end)}</td><td>${fmt(c.end - c.start)}</td><td></td><td></td>`;
+      tr.children[1].textContent = c.name + (c.auto ? '(まるごと)' : '');
+      const sel = document.createElement('select'); // この素材だけの向き
+      ROTS.forEach(([n, t]) => sel.add(new Option(t, n)));
+      sel.value = String(c.rotate || 0);
+      sel.onchange = () => (c.rotate = Number(sel.value));
+      tr.children[5].appendChild(sel);
+      const swap = (a, b) => { [clips[a], clips[b]] = [clips[b], clips[a]]; renderClips(); };
+      tr.lastChild.append(
+        button('見る', () => {
+          const vid = videos.find((x) => x.file === c.file);
+          if (vid && vid !== cur) { showVideo(vid); v.addEventListener('loadedmetadata', () => (v.currentTime = c.start), { once: true }); }
+          else v.currentTime = c.start;
+        }), ' ',
+        button('↑', () => swap(i, i - 1), i === 0), ' ',
+        button('↓', () => swap(i, i + 1), i === clips.length - 1), ' ',
+        button('削除', () => { clips.splice(i, 1); renderClips(); }),
+      );
       $('segs').appendChild(tr);
     });
-    const joined = $('merge').checked && segs.length > 1;
-    $('total').textContent = segs.length ? `合計 ${fmt(sum)}(元の動画の ${(sum / info.duration * 100).toFixed(1)}%)。${joined ? '上から順につなげて、1つのファイルで保存されます。' : '範囲ごとに、別のファイルとして保存されます。'}` : '';
-    $('merge').disabled = segs.length < 2;
-    $('run').disabled = !segs.length;
+    const joined = $('merge').checked && clips.length > 1;
+    const one = new Set(clips.map((c) => c.file)).size === 1 ? videos.find((x) => x.file === clips[0].file) : null;
+    $('total').textContent = clips.length
+      ? `合計 ${fmt(sum)}${one ? `(元の動画の ${(sum / one.duration * 100).toFixed(1)}%)` : ''}。${joined ? '上から順につなげて、1つのファイルで保存されます。' : '1つずつ、別のファイルとして保存されます。'}${joined && new Set(clips.map((c) => c.file + '|' + c.rotate)).size > 1 ? '動画や向きが違うものは、大きさをそろえます(横長に合わせて、縦長は左右に黒い帯がつきます)。' : ''}`
+      : '';
+    $('merge').disabled = clips.length < 2;
+    $('run').disabled = !clips.length;
   }
-  // 解像度・画質・音・結合の選択は、変えるたびに覚えておく
+
+  // ---- 4. 書き出す ----
+  // 解像度・画質・速さ・音・つなげるの選択は、変えるたびに覚えておく
   const saveSettings = () => api('/api/settings', {
     height: Number($('height').value), crf: Number($('crf').value),
     audio: $('audio').checked, merge: $('merge').checked, speed: $('speed').value,
@@ -311,14 +354,10 @@
     if ([...$('speed').options].some((o) => o.value === s.speed)) $('speed').value = s.speed;
     $('audio').checked = s.audio;
     $('merge').checked = s.merge;
-    $('jHeight').value = $('height').value;
-    $('jCrf').value = $('crf').value;
-    $('jSpeed').value = $('speed').value;
-    $('jAudio').checked = $('audio').checked;
-    renderSegs();
+    renderClips();
   };
   ['height', 'crf', 'speed', 'audio'].forEach((id) => $(id).addEventListener('change', saveSettings));
-  $('merge').onchange = () => { renderSegs(); saveSettings(); };
+  $('merge').onchange = () => { renderClips(); saveSettings(); };
 
   $('pickDir').onclick = async () => {
     try { const r = await api('/api/pickfolder', {}); if (r.dir) $('outDir').value = r.dir; } catch (e) { $('runErr').textContent = e.message; }
@@ -328,146 +367,62 @@
     $('resTbl').hidden = true; $('resSum').textContent = '';
     try {
       await api('/api/run', {
-        segments: segs, height: Number($('height').value), crf: Number($('crf').value),
+        clips: clips.map((c) => ({ file: c.file, start: c.start, end: c.end, rotate: c.rotate || 0 })),
+        height: Number($('height').value), crf: Number($('crf').value),
         audio: $('audio').checked, merge: $('merge').checked, speed: $('speed').value, outDir: $('outDir').value.trim(),
       });
-      poll(P_CUT);
+      poll();
     } catch (e) { $('runErr').textContent = e.message; }
   };
   $('cancel').onclick = () => api('/api/cancel', {});
 
-  // 書き出しの進み具合を、画面に出す(P: 画面のどの部品に出すか)
-  function poll(P) {
+  // 書き出しの進み具合を、画面に出す
+  function poll() {
     clearInterval(timer);
     timer = setInterval(async () => {
       let s;
       try { s = await api('/api/status'); } catch { return; }
-      $(P.prog).hidden = false;
-      $(P.cancel).hidden = !s.running;
-      $(P.run).disabled = s.running;
+      $('prog').hidden = false;
+      $('cancel').hidden = !s.running;
+      $('run').disabled = s.running;
       const pct = s.running ? s.percent : (s.error ? s.percent : 100);
-      $(P.bar).style.width = pct + '%';
-      $(P.text).textContent = s.running ? (s.merging ? '1つのファイルにつなげています…' : `${s.index + 1} / ${s.total} 本目を書き出し中… ${Math.floor(s.percent)}%`) : (s.error ? '' : '完了しました');
-      $(P.res).innerHTML = '';
+      $('progBar').style.width = pct + '%';
+      $('progText').textContent = s.running ? (s.merging ? '1つのファイルにつなげています…' : `${s.index + 1} / ${s.total} 件目を書き出し中… ${Math.floor(s.percent)}%`) : (s.error ? '' : '完了しました');
+      $('res').innerHTML = '';
       s.results.forEach((r) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td></td><td>${bytes(r.size)}</td><td></td>`;
         tr.firstChild.textContent = r.name;
-        const b = document.createElement('button'); b.textContent = 'フォルダで見る';
-        b.onclick = () => api('/api/reveal', { file: r.file }).catch((e) => ($(P.err).textContent = e.message));
-        tr.lastChild.appendChild(b);
-        $(P.res).appendChild(tr);
+        tr.lastChild.appendChild(button('フォルダで見る', () => api('/api/reveal', { file: r.file }).catch((e) => ($('runErr').textContent = e.message))));
+        $('res').appendChild(tr);
       });
-      $(P.tbl).hidden = !s.results.length;
+      $('resTbl').hidden = !s.results.length;
       if (!s.running) {
         clearInterval(timer);
-        if (s.error) $(P.err).textContent = s.error;
-        P.finish(s);
+        $('run').disabled = !clips.length;
+        if (s.error) $('runErr').textContent = s.error;
+        if (s.results.length) {
+          const out = s.results.reduce((a, r) => a + r.size, 0);
+          // 元の動画の、同じ長さ分の大きさ(目安)
+          const srcPart = clips.reduce((a, c) => { const vid = videos.find((x) => x.file === c.file); return vid ? a + (c.end - c.start) / vid.duration * vid.size : a; }, 0);
+          $('resSum').textContent = `書き出した合計: ${bytes(out)}。` + (srcPart > 0 ? `元の動画の同じ長さ分(約 ${bytes(srcPart)})の ${(out / srcPart * 100).toFixed(0)}% になりました。` : '');
+        }
       }
     }, 700);
   }
-  const P_CUT = {
-    prog: 'prog', cancel: 'cancel', run: 'run', bar: 'progBar', text: 'progText', res: 'res', tbl: 'resTbl', err: 'runErr',
-    finish(s) {
-      $('run').disabled = !segs.length;
-      if (!s.results.length) return;
-      const out = s.results.reduce((a, r) => a + r.size, 0);
-      const srcPart = s.results.reduce((a, r) => a + r.dur, 0) / info.duration * info.size;
-      $('resSum').textContent = `書き出した合計: ${bytes(out)}。元の動画の同じ長さ分(約 ${bytes(srcPart)})の ${(out / srcPart * 100).toFixed(0)}% になりました。元の動画全体(${bytes(info.size)})の ${(out / info.size * 100).toFixed(1)}% です。`;
-    },
-  };
-
-  // ---- 複数の動画を、1つにつなげる ----
-  let jList = [];
-  $('jHeight').innerHTML = $('height').innerHTML;
-  $('jCrf').innerHTML = $('crf').innerHTML;
-  $('jSpeed').innerHTML = $('speed').innerHTML;
-  const P_JOIN = {
-    prog: 'jProg', cancel: 'jCancel', run: 'jRun', bar: 'jProgBar', text: 'jProgText', res: 'jRes', tbl: 'jResTbl', err: 'jErr',
-    finish(s) {
-      $('jRun').disabled = jList.length < 1;
-      if (!s.results.length) return;
-      const out = s.results.reduce((a, r) => a + r.size, 0);
-      const src = jList.reduce((a, i) => a + i.size, 0);
-      $('jResSum').textContent = `書き出した大きさ: ${bytes(out)}(元の動画 ${jList.length} 本の合計 ${bytes(src)} の ${(out / src * 100).toFixed(1)}%)`;
-    },
-  };
-  function renderJoin() {
-    $('jTbl').hidden = !jList.length;
-    $('jList').innerHTML = '';
-    jList.forEach((f, i) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(f.duration)}</td><td>${bytes(f.size)}</td><td></td><td></td>`;
-      tr.children[1].textContent = f.name;
-      // 動画ごとの向き(覚えない。動画ごとに違うので)
-      const sel = document.createElement('select');
-      [[0, 'そのまま'], [90, '右に90度'], [270, '左に90度'], [180, '180度']].forEach(([v, t]) => sel.add(new Option(t, v)));
-      sel.value = String(f.rotate || 0);
-      sel.onchange = () => (f.rotate = Number(sel.value));
-      tr.children[4].appendChild(sel);
-      const mk = (label, fn, off) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; return b; };
-      tr.lastChild.append(
-        mk('↑', () => { [jList[i - 1], jList[i]] = [jList[i], jList[i - 1]]; renderJoin(); }, i === 0), ' ',
-        mk('↓', () => { [jList[i + 1], jList[i]] = [jList[i], jList[i + 1]]; renderJoin(); }, i === jList.length - 1), ' ',
-        mk('削除', () => { jList.splice(i, 1); renderJoin(); }),
-      );
-      $('jList').appendChild(tr);
-    });
-    const sum = jList.reduce((a, f) => a + f.duration, 0);
-    $('jTotal').textContent = jList.length ? `${jList.length} 本 / 合計 ${fmt(sum)}。${jList.length < 2 ? 'この1本を mp4 に変換します。' : '上から順につながります。'}` : '';
-    $('jAdd').disabled = !jList.length;
-    $('jRun').disabled = jList.length < 1;
-  }
-  async function joinPick(add) {
-    $('jErr').textContent = '';
-    $('jPick').disabled = $('jAdd').disabled = true;
-    try {
-      const r = await api('/api/joinpick', {});
-      if (r.infos) {
-        r.infos.forEach((i) => (i.rotate = 0));
-        jList = add ? jList.concat(r.infos.filter((i) => !jList.some((x) => x.file === i.file))) : r.infos;
-        if (jList.length && (!add || !$('jOutDir').value)) $('jOutDir').value = jList[0].file.replace(/[\\/][^\\/]+$/, '');
-      }
-    } catch (e) { $('jErr').textContent = e.message; }
-    $('jPick').disabled = false;
-    renderJoin();
-  }
-  $('jPick').onclick = () => joinPick(false);
-  $('jAdd').onclick = () => joinPick(true);
-  $('jPickDir').onclick = async () => {
-    try { const r = await api('/api/pickfolder', {}); if (r.dir) $('jOutDir').value = r.dir; } catch (e) { $('jErr').textContent = e.message; }
-  };
-  $('jRun').onclick = async () => {
-    $('jErr').textContent = '';
-    $('jResTbl').hidden = true; $('jResSum').textContent = '';
-    try {
-      await api('/api/joinrun', {
-        files: jList.map((f) => f.file), height: Number($('jHeight').value), crf: Number($('jCrf').value),
-        audio: $('jAudio').checked, speed: $('jSpeed').value, rotates: jList.map((f) => f.rotate || 0), outDir: $('jOutDir').value.trim(),
-      });
-      poll(P_JOIN);
-    } catch (e) { $('jErr').textContent = e.message; }
-  };
-  $('jCancel').onclick = () => api('/api/cancel', {});
-  // 解像度・画質・音は、上の書き出しと同じ設定を使う(どちらで変えても、そろえて覚える)
-  [['height', 'jHeight'], ['crf', 'jCrf'], ['speed', 'jSpeed'], ['audio', 'jAudio']].forEach(([a, b]) => {
-    const copy = (from, to) => () => { if (from.type === 'checkbox') to.checked = from.checked; else to.value = from.value; };
-    $(a).addEventListener('change', copy($(a), $(b)));
-    $(b).addEventListener('change', () => { copy($(b), $(a))(); saveSettings(); });
-  });
 
   document.addEventListener('keydown', (e) => {
-    if (!info || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox') return;
+    if (!cur || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox') return;
     const k = e.key;
     if (k === 'ArrowLeft' || k === 'ArrowRight') {
       e.preventDefault();
-      v.currentTime = Math.min(info.duration, Math.max(0, v.currentTime + (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 10 : 1)));
+      v.currentTime = Math.min(cur.duration, Math.max(0, v.currentTime + (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 10 : 1)));
     } else if (k === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
     else if (k === 'i' || k === 'I') $('setStart').click();
     else if (k === 'o' || k === 'O') $('setEnd').click();
   });
 
-  api('/api/state').then((s) => { if (!s.ffmpeg) $('loadErr').textContent = 'ffmpeg が見つかりません。'; applySettings(s.settings); if (s.info) loaded(s.info); }).catch(() => {});
+  api('/api/state').then((s) => { if (!s.ffmpeg) $('loadErr').textContent = 'ffmpeg が見つかりません。'; applySettings(s.settings); }).catch(() => {});
 })();
 </script>
 </body>
