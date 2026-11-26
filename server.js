@@ -114,6 +114,8 @@ const HEIGHTS = [0, 360, 480, 540, 720, 1080];
 const ROTATIONS = [0, 90, 180, 270];
 const ROTATE_FILTER = { 0: null, 90: 'transpose=1', 270: 'transpose=2', 180: 'hflip,vflip' };
 // 処理の速さ: 速いほど早く終わるが、同じ画質でも、ファイルが少し大きくなる
+// 枠への入れ方: fit = 枠に収める(余った所は黒)、125 / 150 = その割合に大きくして、はみ出た所は切る、fill = 枠いっぱいに広げて、はみ出た所は切る
+const FITS = ['fit', '125', '150', 'fill'];
 const PRESETS = { fast: 'veryfast', normal: 'medium', slow: 'slow' };
 const DEFAULT_SETTINGS = { height: 720, crf: 26, audio: true, merge: true, speed: 'fast' };
 const SETTINGS_FILE = path.join(process.env.APPDATA || __dirname, 'mp4-cutter', 'settings.json');
@@ -194,28 +196,39 @@ function runFfmpeg(args, dur, failMsg) {
 }
 
 // 1つの素材(動画の一部、または動画まるごと)を、解像度と画質を下げて書き出す。
-// ctx: 向きや大きさの違う素材をつなげるとき、全部をそろえる大きさとコマ数({ W, H, fps })。ふつうは null
+// ctx: 枠の大きさ({ W, H })。向きや大きさの違う素材をつなげるときは、unify: true と fps もつく。枠に入れる必要がなければ null
+function scaleToFrame(ctx, fit) {
+  const { W, H } = ctx;
+  let f;
+  if (fit === 'fill') f = `scale=${W}:${H}:force_original_aspect_ratio=increase:force_divisible_by=2,crop=${W}:${H}`;
+  else if (fit === '125' || fit === '150') {
+    const k = Number(fit) / 100;
+    f = `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,scale=trunc(iw*${k}/2)*2:trunc(ih*${k}/2)*2,crop=min(iw\\,${W}):min(ih\\,${H}),pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`;
+  } else f = `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2`;
+  return f + ',setsar=1' + (ctx.fps ? `,fps=${ctx.fps}` : '');
+}
 function encodeClip(info, clip, opt, ctx, outFile) {
   const dur = clip.end - clip.start;
   const whole = clip.start <= 0 && clip.end >= info.duration; // 動画まるごとのときは、長さを切らない
-  const silent = !!ctx && opt.audio && !info.hasAudio; // 音のない動画には無音をつける(つなげたとき、音がずれないように)
+  const unify = !!(ctx && ctx.unify);
+  const silent = unify && opt.audio && !info.hasAudio; // 音のない動画には無音をつける(つなげたとき、音がずれないように)
   const args = ['-hide_banner', '-y'];
   if (clip.start > 0) args.push('-ss', String(clip.start));
   args.push('-i', info.file);
   if (silent) args.push('-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo');
   args.push('-map', '0:v:0');
-  if (opt.audio) args.push('-map', silent ? '1:a:0' : ctx ? '0:a:0' : '0:a:0?');
+  if (opt.audio) args.push('-map', silent ? '1:a:0' : unify ? '0:a:0' : '0:a:0?');
   if (!whole) args.push('-t', String(dur));
   const vf = [];
   const rot = ROTATE_FILTER[clip.rotate || 0];
   if (rot) vf.push(rot); // 向きを変えてから、大きさを決める
-  if (ctx) vf.push(`scale=${ctx.W}:${ctx.H}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${ctx.W}:${ctx.H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${ctx.fps}`);
+  if (ctx) vf.push(scaleToFrame(ctx, clip.fit));
   else if (opt.height > 0) vf.push(`scale=-2:'min(${opt.height},ih)'`); // 元より大きくはしない
   if (vf.length) args.push('-vf', vf.join(','));
   args.push('-c:v', 'libx264', '-preset', presetOf(opt), '-crf', String(opt.crf), '-pix_fmt', 'yuv420p');
   if (opt.audio) {
     args.push('-c:a', 'aac', '-b:a', '96k');
-    if (ctx) args.push('-ar', '44100', '-ac', '2');
+    if (unify) args.push('-ar', '44100', '-ac', '2');
   } else args.push('-an');
   if (silent) args.push('-shortest');
   args.push('-movflags', '+faststart', '-progress', 'pipe:1', '-nostats', outFile);
@@ -258,7 +271,7 @@ const turnedSize = (i, rot) => (rot === 90 || rot === 270 ? { w: i.height, h: i.
 async function runJob(body) {
   const clips = body.clips.map((c) => {
     const info = state.probed.get(c.file);
-    return { file: c.file, start: c.start, end: Math.min(c.end, info.duration), rotate: c.rotate || 0, info };
+    return { file: c.file, start: c.start, end: Math.min(c.end, info.duration), rotate: c.rotate || 0, fit: c.fit || 'fit', info };
   });
   const n = clips.length;
   const merge = !!body.merge && n > 1;
@@ -267,14 +280,14 @@ async function runJob(body) {
   try {
     fs.mkdirSync(body.outDir, { recursive: true });
     // 同じ動画の、同じ向きの範囲だけをつなげるときは、そろえる必要がない。それ以外は、全部の大きさとコマ数をそろえる
-    const uniform = clips.every((c) => c.file === clips[0].file && c.rotate === clips[0].rotate);
-    let ctx = null;
+    const uniform = clips.every((c) => c.file === clips[0].file && c.rotate === clips[0].rotate && c.fit === clips[0].fit);
+    let uni = null;
     if (merge && !uniform) {
       const f = frameFor(clips.map((c) => turnedSize(c.info, c.rotate)), body.height);
       const fps = Math.round(Math.min(30, Math.max(...clips.map((c) => c.info.fps))) * 1000) / 1000;
-      ctx = { ...f, fps };
+      uni = { ...f, fps, unify: true };
     }
-    const tag = ctx ? `_${ctx.H}p` : body.height > 0 ? `_${body.height}p` : '';
+    const tag = uni ? `_${uni.H}p` : body.height > 0 ? `_${body.height}p` : '';
     if (merge) work = fs.mkdtempSync(path.join(body.outDir, '_作業中_')); // つなげ終わったら消す
     for (let i = 0; i < n; i++) {
       const c = clips[i];
@@ -287,6 +300,8 @@ async function runJob(body) {
         const whole = c.start <= 0 && c.end >= c.info.duration;
         out = uniquePath(path.join(body.outDir, whole ? `${base}${tag || '_変換'}.mp4` : `${base}_${stamp(c.start)}-${stamp(c.end)}${tag}.mp4`));
       }
+      // 枠の入れ方を変えた素材は、それぞれの大きさの枠に入れる(つなげないとき、または同じものだけをつなげるとき)
+      const ctx = uni || (c.fit !== 'fit' ? frameFor([turnedSize(c.info, c.rotate)], body.height) : null);
       await encodeClip(c.info, c, body, ctx, out);
       if (!merge) job.results.push({ file: out, name: path.basename(out), size: fs.statSync(out).size, dur: c.end - c.start, src: c.info.file });
       job.percent = 100;
@@ -377,6 +392,7 @@ function validateRun(b) {
     if (!(Number.isFinite(c.start) && Number.isFinite(c.end) && c.start >= 0 && c.end > c.start && c.end <= info.duration + 1))
       throw new Error('範囲の時間が正しくありません');
     if (c.rotate !== undefined && !ROTATIONS.includes(c.rotate)) throw new Error('向きが正しくありません');
+    if (c.fit !== undefined && !FITS.includes(c.fit)) throw new Error('大きさの指定が正しくありません');
   }
   if (!HEIGHTS.includes(b.height)) throw new Error('解像度が正しくありません');
   if (!(Number.isInteger(b.crf) && b.crf >= 16 && b.crf <= 40)) throw new Error('画質が正しくありません');

@@ -94,6 +94,8 @@
         <option value="270">左に90度</option>
         <option value="180">180度</option>
       </select>
+      <label class="hint" for="addFit">枠への入れ方:</label>
+      <select id="addFit"></select>
       <button class="primary" id="add">この範囲を追加</button>
       <button id="addWhole">この動画を、まるごと追加</button>
     </div>
@@ -103,7 +105,7 @@
   <section id="listSec" hidden>
     <h2><span>3</span>書き出す内容の一覧</h2>
     <table>
-      <thead><tr><th>#</th><th>動画</th><th>開始</th><th>終了</th><th>長さ</th><th>向き</th><th></th></tr></thead>
+      <thead><tr><th>#</th><th>動画</th><th>開始</th><th>終了</th><th>長さ</th><th>向き</th><th>枠への入れ方</th><th></th></tr></thead>
       <tbody id="segs"></tbody>
     </table>
     <p class="hint" id="total"></p>
@@ -191,6 +193,9 @@
   const bytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : (n / 1e6).toFixed(1) + ' MB');
   const dirOf = (f) => f.replace(/[\\/][^\\/]+$/, '');
   const ROTS = [[0, 'そのまま'], [90, '右に90度'], [270, '左に90度'], [180, '180度']];
+  // 枠への入れ方(つなげたときの画面の大きさに対して)。大きくすると、はみ出た所は切れる
+  const FITS = [['fit', '枠に収める'], ['125', '少し大きく(125%)'], ['150', '大きく(150%)'], ['fill', '枠いっぱい']];
+  FITS.forEach(([n, t]) => $('addFit').add(new Option(t, n)));
   const button = (label, fn, off) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; return b; };
 
   setInterval(() => api('/api/ping', {}).catch(() => {}), 5000);
@@ -203,7 +208,7 @@
     for (const i of list) {
       if (videos.some((x) => x.file === i.file)) continue;
       videos.push(i);
-      clips.push({ file: i.file, name: i.name, start: 0, end: i.duration, rotate: 0, auto: true }); // 初めは、まるごと使う
+      clips.push({ file: i.file, name: i.name, start: 0, end: i.duration, rotate: 0, fit: 'fit', auto: true }); // 初めは、まるごと使う
       last = i;
     }
     if (!last) return;
@@ -294,13 +299,13 @@
     const s = parse($('startT').value), e = parse($('endT').value);
     if (!(s >= 0 && e > s)) return alert('開始より後の終了時間を入れてください');
     if (e > cur.duration + 1) return alert('終了が、動画の長さを超えています');
-    insertClip({ file: cur.file, name: cur.name, start: s, end: Math.min(e, cur.duration), rotate: Number($('addRot').value), auto: false });
+    insertClip({ file: cur.file, name: cur.name, start: s, end: Math.min(e, cur.duration), rotate: Number($('addRot').value), fit: $('addFit').value, auto: false });
     $('startT').value = fmt(e);
     $('endT').value = fmt(cur.duration);
     renderClips();
   };
   $('addWhole').onclick = () => {
-    insertClip({ file: cur.file, name: cur.name, start: 0, end: cur.duration, rotate: Number($('addRot').value), auto: false });
+    insertClip({ file: cur.file, name: cur.name, start: 0, end: cur.duration, rotate: Number($('addRot').value), fit: $('addFit').value, auto: false });
     renderClips();
   };
 
@@ -312,13 +317,18 @@
     clips.forEach((c, i) => {
       sum += c.end - c.start;
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(c.start)}</td><td>${fmt(c.end)}</td><td>${fmt(c.end - c.start)}</td><td></td><td></td>`;
+      tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(c.start)}</td><td>${fmt(c.end)}</td><td>${fmt(c.end - c.start)}</td><td></td><td></td><td></td>`;
       tr.children[1].textContent = c.name + (c.auto ? '(まるごと)' : '');
       const sel = document.createElement('select'); // この素材だけの向き
       ROTS.forEach(([n, t]) => sel.add(new Option(t, n)));
       sel.value = String(c.rotate || 0);
       sel.onchange = () => (c.rotate = Number(sel.value));
       tr.children[5].appendChild(sel);
+      const fsel = document.createElement('select'); // この素材だけの、枠への入れ方
+      FITS.forEach(([n, t]) => fsel.add(new Option(t, n)));
+      fsel.value = c.fit || 'fit';
+      fsel.onchange = () => (c.fit = fsel.value);
+      tr.children[6].appendChild(fsel);
       const swap = (a, b) => { [clips[a], clips[b]] = [clips[b], clips[a]]; renderClips(); };
       tr.lastChild.append(
         button('見る', () => {
@@ -335,7 +345,7 @@
     const joined = $('merge').checked && clips.length > 1;
     const one = new Set(clips.map((c) => c.file)).size === 1 ? videos.find((x) => x.file === clips[0].file) : null;
     $('total').textContent = clips.length
-      ? `合計 ${fmt(sum)}${one ? `(元の動画の ${(sum / one.duration * 100).toFixed(1)}%)` : ''}。${joined ? '上から順につなげて、1つのファイルで保存されます。' : '1つずつ、別のファイルとして保存されます。'}${joined && new Set(clips.map((c) => c.file + '|' + c.rotate)).size > 1 ? '動画や向きが違うものは、大きさをそろえます(横長に合わせて、縦長は左右に黒い帯がつきます)。' : ''}`
+      ? `合計 ${fmt(sum)}${one ? `(元の動画の ${(sum / one.duration * 100).toFixed(1)}%)` : ''}。${joined ? '上から順につなげて、1つのファイルで保存されます。' : '1つずつ、別のファイルとして保存されます。'}${joined && new Set(clips.map((c) => c.file + '|' + c.rotate + '|' + c.fit)).size > 1 ? '動画や向きが違うものは、大きさをそろえます(横長に合わせて、縦長は左右に黒い帯がつきます)。' : ''}`
       : '';
     $('merge').disabled = clips.length < 2;
     $('run').disabled = !clips.length;
@@ -367,7 +377,7 @@
     $('resTbl').hidden = true; $('resSum').textContent = '';
     try {
       await api('/api/run', {
-        clips: clips.map((c) => ({ file: c.file, start: c.start, end: c.end, rotate: c.rotate || 0 })),
+        clips: clips.map((c) => ({ file: c.file, start: c.start, end: c.end, rotate: c.rotate || 0, fit: c.fit || 'fit' })),
         height: Number($('height').value), crf: Number($('crf').value),
         audio: $('audio').checked, merge: $('merge').checked, speed: $('speed').value, outDir: $('outDir').value.trim(),
       });
