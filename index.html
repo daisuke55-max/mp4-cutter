@@ -35,11 +35,8 @@
   h2 small { color: var(--sub); font-weight: normal; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
 
-  /* 画面全体: 上の帯 + 左(範囲を決める) + 右(選んだ動画と、書き出す内容の一覧)。パソコンの画面1枚に収める */
+  /* 画面全体: 左(範囲を決める) + 右(選んだ動画と、書き出す内容の一覧)。パソコンの画面1枚に収める */
   .app { display: flex; flex-direction: column; height: 100vh; }
-  header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
-  header.top h1 { font-size: 17px; margin: 0 8px 0 0; white-space: nowrap; }
-  header.top input { flex: 1; min-width: 220px; }
   .work { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(440px, 36%); gap: 12px; padding: 12px; }
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; min-height: 0; }
   .phead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
@@ -94,13 +91,6 @@
 </head>
 <body>
 <div class="app">
-  <header class="top">
-    <h1>動画カット・圧縮</h1>
-    <button class="primary" id="pick">動画を選ぶ…</button>
-    <input type="text" id="pathInput" placeholder="またはファイルの場所を貼り付けて Enter(まとめて選ぶときは、左のボタンで Ctrl を押しながらクリック)">
-    <span class="err" id="loadErr"></span>
-  </header>
-
   <div class="work">
     <!-- 2. 範囲を決める(作業の中心) -->
     <section class="panel nocur" id="editPanel">
@@ -110,7 +100,7 @@
       </div>
       <div id="stage">
         <div id="pvBox"><video id="v" controls preload="metadata"></video></div>
-        <p class="overlay" id="emptyMsg">上の「動画を選ぶ」で、動画を選んでください(1本でも、まとめて複数でも選べます)。</p>
+        <p class="overlay" id="emptyMsg">右上の「動画選択」で、動画を選んでください(1本でも、まとめて複数でも選べます。まとめて選ぶときは、Ctrl を押しながらクリック)。</p>
         <p class="overlay" id="noPlay" hidden>この動画は、ブラウザでは再生できないようです。下の時間の欄に、直接入力してください。</p>
       </div>
       <div class="row ctl">
@@ -148,7 +138,11 @@
     <div class="right">
       <!-- 1. 選んだ動画 -->
       <section class="panel" id="vidPanel">
-        <div class="phead"><h2><span class="no">1</span>選んだ動画</h2></div>
+        <div class="phead">
+          <h2><span class="no">1</span>選んだ動画</h2>
+          <button class="primary" id="pick" title="まとめて選ぶときは、Ctrl を押しながらクリックします">動画選択</button>
+        </div>
+        <div class="err" id="loadErr"></div>
         <div class="list" id="vids"></div>
       </section>
 
@@ -294,7 +288,7 @@
   function renderVideos() {
     const box = $('vids');
     box.innerHTML = '';
-    if (!videos.length) { box.appendChild(span('empty', 'まだ選んでいません。上の「動画を選ぶ」で選びます。選んだ動画は、何も指定しなければ、まるごと使います。')); return; }
+    if (!videos.length) { box.appendChild(span('empty', 'まだ選んでいません。右上の「動画選択」で選びます。選んだ動画は、何も指定しなければ、まるごと使います。')); return; }
     videos.forEach((i) => {
       const it = document.createElement('div');
       it.className = 'item' + (i === cur ? ' cur' : '');
@@ -317,12 +311,6 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
     } catch (e) { $('loadErr').textContent = e.message; }
     $('pick').disabled = false;
   };
-  $('pathInput').addEventListener('keydown', async (e) => {
-    if (e.key !== 'Enter') return;
-    $('loadErr').textContent = '';
-    try { addVideos([(await api('/api/setpath', { path: $('pathInput').value })).info]); $('pathInput').value = ''; }
-    catch (err) { $('loadErr').textContent = err.message; }
-  });
 
   // ---- 2. 範囲を決める ----
   function updateEditor() {
