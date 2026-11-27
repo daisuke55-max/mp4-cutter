@@ -465,9 +465,10 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
           pv = { clip: c }; // この素材の向き・枠への入れ方で、仕上がりを見る
           renderClips();
         }),
+        button('削除', () => { clips.splice(i, 1); renderClips(); }),
+        span('grow', ''), // ↑↓は、右端に置く
         button('↑', () => swap(i, i - 1), i === 0),
         button('↓', () => swap(i, i + 1), i === clips.length - 1),
-        button('削除', () => { clips.splice(i, 1); renderClips(); }),
       );
       it.append(top, ctrl);
       box.appendChild(it);
