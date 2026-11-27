@@ -59,6 +59,9 @@
   /* 一覧 */
   .item { padding: 7px 6px; border-bottom: 1px solid var(--line); }
   .item.cur { background: var(--accent-soft); border-radius: 8px; }
+  .item.pick { cursor: pointer; border-radius: 8px; }
+  .item.pick:not(.cur):hover { background: var(--bg); }
+  .item.pick.cur .name::before { content: '▶ '; color: var(--accent); }
   .item .top { display: flex; align-items: baseline; gap: 8px; }
   .item .num { flex: none; color: var(--sub); font-size: 13px; width: 1.6em; text-align: right; }
   .item .name { flex: 1; min-width: 0; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -299,7 +302,9 @@
       const top = document.createElement('div');
       top.className = 'top';
       top.style.alignItems = 'center';
-      top.append(span('name', i.name), span('meta', fmt(i.duration)), button(i === cur ? '見ています' : '範囲を決める', () => showVideo(i), i === cur), button('外す', () => removeVideo(i)));
+      top.append(span('name', i.name), span('meta', fmt(i.duration)), button('外す', (e) => { e.stopPropagation(); removeVideo(i); }));
+      it.classList.add('pick');
+      it.onclick = () => { if (i !== cur) showVideo(i); }; // 行(ファイル名)をクリックすると、その動画を選ぶ
       it.title = `${i.file}
 ${i.width}×${i.height} / ${bytes(i.size)}`;
       it.append(top);
