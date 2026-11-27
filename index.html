@@ -54,6 +54,7 @@
   .overlay { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; color: #d7e2da; font-size: 15px; pointer-events: none; }
   .pos { font-size: 20px; font-variant-numeric: tabular-nums; font-weight: bold; margin: 0 6px; }
   #editPanel.nocur .ctl { opacity: .45; pointer-events: none; }
+  #editPanel:not(.nocur) #stage { cursor: pointer; }
 
   /* 一覧 */
   .item { padding: 7px 6px; border-bottom: 1px solid var(--line); }
@@ -104,7 +105,7 @@
         <p class="overlay" id="noPlay" hidden>この動画は、ブラウザでは再生できないようです。下の時間の欄に、直接入力してください。</p>
       </div>
       <div class="row ctl">
-        <button id="pvPlay" title="スペースキーでも、再生・停止できます">▶ 再生 / 停止</button>
+        <button id="pvPlay" title="画面のクリックや、スペースキーでも、再生・停止できます">▶ 再生 / 停止</button>
         <span class="sep"></span>
         <button data-seek="-600">−10分</button>
         <button data-seek="-60">−1分</button>
@@ -122,7 +123,7 @@
         <span>〜</span>
         <input type="text" class="time" id="endT" value="" aria-label="終了">
         <button id="setEnd">ここを終了 (O)</button>
-        <span class="hint" style="margin:0 0 0 6px">キー: ← →(1秒)、Shift+← →(10秒)、スペース(再生・停止)</span>
+        <span class="hint" style="margin:0 0 0 6px">キー: ← →(1秒)、Shift+← →(10秒)、スペース・画面クリック(再生・停止)</span>
       </div>
       <div class="row ctl">
         <label class="hint" style="margin:0" for="addRot">向き</label>
@@ -371,6 +372,8 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
   }
   $('pvOn').onchange = updatePreview;
   $('pvPlay').onclick = () => (v.paused ? v.play() : v.pause());
+  // プレビューの画面をクリックしても、再生・停止できる(元の動画のまま見ているときは、ブラウザの標準の動きに任せる)
+  $('stage').addEventListener('click', () => { if (cur && !v.controls) v.paused ? v.play() : v.pause(); });
   ['addRot', 'addFit'].forEach((id) => $(id).addEventListener('change', () => { pv = null; renderClips(); }));
   $('height').addEventListener('change', updatePreview);
   if (window.ResizeObserver) new ResizeObserver(() => updatePreview()).observe($('stage'));
