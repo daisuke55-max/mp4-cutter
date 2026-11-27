@@ -445,12 +445,10 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
       top.append(span('num', i + 1), span('name', c.name + (c.auto ? '(まるごと)' : '')), span('meta', `${fmt(c.start)}〜${fmt(c.end)}(${fmt(c.end - c.start)})`));
       const ctrl = document.createElement('div');
       ctrl.className = 'ctrl';
-      const sel = document.createElement('select'); // この素材だけの向き
-      sel.className = 'sm';
-      sel.title = '向き';
-      fillSelect(sel, ROTS);
-      sel.value = String(c.rotate || 0);
-      sel.onchange = () => { c.rotate = Number(sel.value); updatePreview(); };
+      // この素材だけの向き。押すたびに、右に90度ずつ回す
+      const sel = button('↻ ' + rotName(c.rotate || 0), () => { c.rotate = ((c.rotate || 0) + 90) % 360; sel.textContent = '↻ ' + rotName(c.rotate); updatePreview(); });
+      sel.title = '押すたびに、右に90度ずつ回ります';
+      sel.style.minWidth = '7.5em';
       const fsel = document.createElement('select'); // この素材だけの、枠への入れ方
       fsel.className = 'sm';
       fsel.title = '枠への入れ方';
