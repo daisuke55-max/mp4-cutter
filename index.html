@@ -126,8 +126,8 @@
         <span class="hint" style="margin:0 0 0 6px">キー: ← →(1秒)、Shift+← →(10秒)、スペース・画面クリック(再生・停止)</span>
       </div>
       <div class="row ctl">
-        <label class="hint" style="margin:0" for="addRot">向き</label>
-        <select id="addRot"></select>
+        <span class="hint" style="margin:0">向き</span>
+        <button id="addRot" title="押すたびに、右に90度ずつ回ります">↻ そのまま</button>
         <label class="hint" style="margin:0" for="addFit">枠への入れ方</label>
         <select id="addFit"></select>
         <span class="sep"></span>
@@ -252,7 +252,10 @@
   const FITS = [['fit', '枠に収める(100%)'], ...[110, 120, 130, 140, 150, 160, 170, 180, 190, 200].map((n) => [String(n), n + '%']), ['fill', '枠いっぱい']];
   const FITS_SHORT = FITS.map(([n, t]) => [n, n === 'fit' ? '収める' : n === 'fill' ? 'いっぱい' : t]);
   const fillSelect = (sel, list) => list.forEach(([n, t]) => sel.add(new Option(t, n)));
-  fillSelect($('addRot'), ROTS);
+  // ②の向きは、ボタンを押すたびに、右に90度ずつ回す(そのまま → 右に90度 → 180度 → 左に90度 → そのまま)
+  let addRot = 0;
+  const rotName = (r) => ROTS.find(([n]) => n === r)[1];
+  const setAddRot = (r) => { addRot = r; $('addRot').textContent = '↻ ' + rotName(r); };
   fillSelect($('addFit'), FITS);
   const button = (label, fn, off, cls) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; b.className = cls || 'sm'; return b; };
   const span = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };
@@ -350,7 +353,7 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
     v.controls = !on && !!cur;
     if (!on) { box.className = ''; box.removeAttribute('style'); v.removeAttribute('style'); return; }
     const viaClip = !!(pv && clips.includes(pv.clip));
-    const s = viaClip ? { rot: pv.clip.rotate || 0, fit: pv.clip.fit || 'fit' } : { rot: Number($('addRot').value), fit: $('addFit').value };
+    const s = viaClip ? { rot: pv.clip.rotate || 0, fit: pv.clip.fit || 'fit' } : { rot: addRot, fit: $('addFit').value };
     const vid = viaClip ? videoOf(pv.clip) : cur;
     // 書き出し後の画面の大きさ: つなげるなら、一覧の全部(まだ追加していないときは、追加したものを入れて)から決める。つなげないなら、その素材の大きさ
     const sizes = viaClip
@@ -374,7 +377,8 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
   $('pvPlay').onclick = () => (v.paused ? v.play() : v.pause());
   // プレビューの画面をクリックしても、再生・停止できる(元の動画のまま見ているときは、ブラウザの標準の動きに任せる)
   $('stage').addEventListener('click', () => { if (cur && !v.controls) v.paused ? v.play() : v.pause(); });
-  ['addRot', 'addFit'].forEach((id) => $(id).addEventListener('change', () => { pv = null; renderClips(); }));
+  $('addRot').onclick = () => { setAddRot((addRot + 90) % 360); pv = null; renderClips(); };
+  $('addFit').addEventListener('change', () => { pv = null; renderClips(); });
   $('height').addEventListener('change', updatePreview);
   if (window.ResizeObserver) new ResizeObserver(() => updatePreview()).observe($('stage'));
   v.addEventListener('error', () => { if (cur) $('noPlay').hidden = false; });
@@ -404,13 +408,13 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
     const s = parse($('startT').value), e = parse($('endT').value);
     if (!(s >= 0 && e > s)) return alert('開始より後の終了時間を入れてください');
     if (e > cur.duration + 1) return alert('終了が、動画の長さを超えています');
-    insertClip({ file: cur.file, name: cur.name, start: s, end: Math.min(e, cur.duration), rotate: Number($('addRot').value), fit: $('addFit').value, auto: false });
+    insertClip({ file: cur.file, name: cur.name, start: s, end: Math.min(e, cur.duration), rotate: addRot, fit: $('addFit').value, auto: false });
     $('startT').value = fmt(e);
     $('endT').value = fmt(cur.duration);
     renderClips();
   };
   $('addWhole').onclick = () => {
-    insertClip({ file: cur.file, name: cur.name, start: 0, end: cur.duration, rotate: Number($('addRot').value), fit: $('addFit').value, auto: false });
+    insertClip({ file: cur.file, name: cur.name, start: 0, end: cur.duration, rotate: addRot, fit: $('addFit').value, auto: false });
     renderClips();
   };
 
