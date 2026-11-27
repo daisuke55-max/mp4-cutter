@@ -52,6 +52,11 @@
   #pvBox.on { overflow: hidden; outline: 1px dashed #6b7f71; }
   #pvBox.on video { position: absolute; left: 50%; top: 50%; object-fit: fill; transform-origin: center; }
   .overlay { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; color: #d7e2da; font-size: 15px; pointer-events: none; }
+  #bar { gap: 8px; }
+  #bar #pvPlay { width: 44px; font-size: 16px; }
+  #seekBar { flex: 1; min-width: 120px; accent-color: var(--accent); cursor: pointer; }
+  #volBar { width: 90px; accent-color: var(--accent); cursor: pointer; }
+  .tm { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--sub); }
   .pos { font-size: 20px; font-variant-numeric: tabular-nums; font-weight: bold; margin: 0 6px; }
   #editPanel.nocur .ctl { opacity: .45; pointer-events: none; }
   #editPanel:not(.nocur) #stage { cursor: pointer; }
@@ -107,9 +112,15 @@
         <p class="overlay" id="emptyMsg">右上の「動画選択」で、動画を選んでください(1本でも、まとめて複数でも選べます。まとめて選ぶときは、Ctrl を押しながらクリック)。</p>
         <p class="overlay" id="noPlay" hidden>この動画は、ブラウザでは再生できないようです。下の時間の欄に、直接入力してください。</p>
       </div>
+      <div class="row ctl" id="bar">
+        <button id="pvPlay" title="画面のクリックや、スペースキーでも、再生・停止できます">▶</button>
+        <span class="tm" id="tmNow">0:00:00</span>
+        <input type="range" id="seekBar" min="0" max="1" step="0.1" value="0" aria-label="再生する位置">
+        <span class="tm" id="tmAll">0:00:00</span>
+        <button id="muteBtn" title="音を消す・戻す">🔊</button>
+        <input type="range" id="volBar" min="0" max="1" step="0.05" value="1" aria-label="音の大きさ" title="音の大きさ">
+      </div>
       <div class="row ctl">
-        <button id="pvPlay" title="画面のクリックや、スペースキーでも、再生・停止できます">▶ 再生 / 停止</button>
-        <span class="sep"></span>
         <button data-seek="-600">−10分</button>
         <button data-seek="-60">−1分</button>
         <button data-seek="-10">−10秒</button>
@@ -355,7 +366,7 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
   function updatePreview() {
     const box = $('pvBox');
     const on = $('pvOn').checked && !!cur;
-    v.controls = !on && !!cur;
+    v.controls = false; // ブラウザ標準の操作ボタンは使わず、下の操作バーで操作する
     if (!on) { box.className = ''; box.removeAttribute('style'); v.removeAttribute('style'); return; }
     const viaClip = !!(pv && clips.includes(pv.clip));
     const s = viaClip ? { rot: pv.clip.rotate || 0, fit: pv.clip.fit || 'fit' } : { rot: addRot, fit: $('addFit').value };
@@ -380,15 +391,42 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
   }
   $('pvOn').onchange = updatePreview;
   $('pvPlay').onclick = () => (v.paused ? v.play() : v.pause());
+  // ---- 操作バー(再生・停止、時間、再生する位置のバー、音の大きさ) ----
+  let dragging = false;
+  const syncBar = () => {
+    const d = cur ? cur.duration : 0;
+    $('seekBar').max = d || 1;
+    if (!dragging) $('seekBar').value = v.currentTime || 0;
+    $('tmNow').textContent = fmt(v.currentTime || 0);
+    $('tmAll').textContent = fmt(d);
+  };
+  const syncPlay = () => ($('pvPlay').textContent = v.paused ? '▶' : '❚❚');
+  v.addEventListener('play', syncPlay);
+  v.addEventListener('pause', syncPlay);
+  v.addEventListener('ended', syncPlay);
+  v.addEventListener('loadedmetadata', syncBar);
+  $('seekBar').addEventListener('input', () => { dragging = true; v.currentTime = Number($('seekBar').value); $('tmNow').textContent = fmt(v.currentTime); });
+  $('seekBar').addEventListener('change', () => { dragging = false; });
+  // 音の大きさ(このパソコンのブラウザに覚えておく)
+  const syncVol = () => {
+    $('volBar').value = v.muted ? 0 : v.volume;
+    $('muteBtn').textContent = v.muted || v.volume === 0 ? '🔇' : '🔊';
+    try { localStorage.setItem('mp4cutter.vol', JSON.stringify({ volume: v.volume, muted: v.muted })); } catch { /* 覚えられなくても使える */ }
+  };
+  try { const s = JSON.parse(localStorage.getItem('mp4cutter.vol') || 'null'); if (s) { v.volume = Math.min(1, Math.max(0, Number(s.volume) || 0)); v.muted = !!s.muted; } } catch { /* 初めて */ }
+  $('volBar').addEventListener('input', () => { v.volume = Number($('volBar').value); v.muted = v.volume === 0; });
+  $('muteBtn').onclick = () => { if (v.muted || v.volume === 0) { v.muted = false; if (v.volume === 0) v.volume = 0.5; } else v.muted = true; };
+  v.addEventListener('volumechange', syncVol);
+  syncVol();
   // プレビューの画面をクリックしても、再生・停止できる(元の動画のまま見ているときは、ブラウザの標準の動きに任せる)
-  $('stage').addEventListener('click', () => { if (cur && !v.controls) v.paused ? v.play() : v.pause(); });
+  $('stage').addEventListener('click', () => { if (cur) v.paused ? v.play() : v.pause(); });
   $('addRot').onclick = () => { setAddRot((addRot + 90) % 360); pv = null; renderClips(); };
   $('addFit').addEventListener('change', () => { pv = null; renderClips(); });
   $('height').addEventListener('change', updatePreview);
   if (window.ResizeObserver) new ResizeObserver(() => updatePreview()).observe($('stage'));
   v.addEventListener('error', () => { if (cur) $('noPlay').hidden = false; });
-  v.addEventListener('timeupdate', () => ($('pos').textContent = fmt(v.currentTime)));
-  v.addEventListener('seeked', () => ($('pos').textContent = fmt(v.currentTime)));
+  v.addEventListener('timeupdate', () => { $('pos').textContent = fmt(v.currentTime); syncBar(); });
+  v.addEventListener('seeked', () => { $('pos').textContent = fmt(v.currentTime); syncBar(); });
   document.querySelectorAll('[data-seek]').forEach((b) => (b.onclick = () => {
     v.currentTime = Math.min(cur.duration, Math.max(0, v.currentTime + Number(b.dataset.seek)));
   }));
