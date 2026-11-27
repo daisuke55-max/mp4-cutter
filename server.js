@@ -114,8 +114,8 @@ const HEIGHTS = [0, 360, 480, 540, 720, 1080];
 const ROTATIONS = [0, 90, 180, 270];
 const ROTATE_FILTER = { 0: null, 90: 'transpose=1', 270: 'transpose=2', 180: 'hflip,vflip' };
 // 処理の速さ: 速いほど早く終わるが、同じ画質でも、ファイルが少し大きくなる
-// 枠への入れ方: fit = 枠に収める(余った所は黒)、110〜150 = その割合(%)に大きくして、はみ出た所は切る、fill = 枠いっぱいに広げて、はみ出た所は切る
-const FITS = ['fit', '110', '120', '130', '140', '150', 'fill'];
+// 枠への入れ方: fit = 枠に収める(余った所は黒)、110〜200 = その割合(%)に大きくして、はみ出た所は切る、fill = 枠いっぱいに広げて、はみ出た所は切る
+const FITS = ['fit', '110', '120', '130', '140', '150', '160', '170', '180', '190', '200', 'fill'];
 const PRESETS = { fast: 'veryfast', normal: 'medium', slow: 'slow' };
 const DEFAULT_SETTINGS = { height: 720, crf: 26, audio: true, merge: true, speed: 'fast' };
 const SETTINGS_FILE = path.join(process.env.APPDATA || __dirname, 'mp4-cutter', 'settings.json');
