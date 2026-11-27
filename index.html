@@ -16,156 +16,206 @@
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 "Yu Gothic UI", "Meiryo UI", sans-serif; }
-  main { max-width: 880px; margin: 0 auto; padding: 20px 16px 64px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .lead { color: var(--sub); margin: 0 0 20px; font-size: 14px; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-  h2 { font-size: 16px; margin: 0 0 10px; }
-  h2 span { display: inline-block; background: var(--accent); color: var(--accent-text); border-radius: 50%; width: 24px; height: 24px; text-align: center; font-size: 14px; line-height: 24px; margin-right: 8px; }
-  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 "Yu Gothic UI", "Meiryo UI", sans-serif; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 6px 11px; cursor: pointer; white-space: nowrap; }
   button:hover { border-color: var(--accent); }
   button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: bold; }
   button:disabled { opacity: .5; cursor: not-allowed; }
-  input[type=text], select { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--card); color: var(--text); min-width: 0; }
-  input[type=text].time { width: 112px; text-align: center; font-variant-numeric: tabular-nums; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  button.sm, select.sm { padding: 3px 8px; font-size: 13px; }
+  input[type=text], select { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; background: var(--card); color: var(--text); min-width: 0; }
+  input[type=text].time { width: 100px; text-align: center; font-variant-numeric: tabular-nums; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 0; }
   .grow { flex: 1; }
-  .info { background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; font-size: 14px; margin-top: 8px; }
-  video { width: 100%; max-height: 52vh; background: #000; border-radius: 8px; }
-  #pvBox.on { position: relative; overflow: hidden; background: #000; border-radius: 8px; margin: 0 auto; }
-  #pvBox.on video { position: absolute; left: 50%; top: 50%; max-height: none; border-radius: 0; transform-origin: center; }
-  .pos { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: bold; margin: 0 8px; }
-  .hint { color: var(--sub); font-size: 13px; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  td, th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; font-variant-numeric: tabular-nums; }
+  .hint { color: var(--sub); font-size: 13px; margin: 6px 0 0; }
+  .err { color: var(--warn); font-weight: bold; }
+  h2 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  h2 .no { flex: none; display: inline-block; background: var(--accent); color: var(--accent-text); border-radius: 50%; width: 22px; height: 22px; text-align: center; font-size: 13px; line-height: 22px; }
+  h2 small { color: var(--sub); font-weight: normal; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+
+  /* 画面全体: 上の帯 + 左(範囲を決める) + 右(選んだ動画と、書き出す内容の一覧)。パソコンの画面1枚に収める */
+  .app { display: flex; flex-direction: column; height: 100vh; }
+  header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 14px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header.top h1 { font-size: 17px; margin: 0 8px 0 0; white-space: nowrap; }
+  header.top input { flex: 1; min-width: 220px; }
+  .work { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(440px, 36%); gap: 12px; padding: 12px; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; min-height: 0; }
+  .phead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .right { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  #vidPanel { flex: 0 0 auto; max-height: 32%; }
+  #clipPanel { flex: 1 1 0; }
+  .list { flex: 1; min-height: 0; overflow: auto; }
+
+  /* プレビュー */
+  #stage { flex: 1; min-height: 160px; position: relative; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  #pvBox { position: relative; width: 100%; height: 100%; }
+  #pvBox video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  #pvBox.on { overflow: hidden; outline: 1px dashed #6b7f71; }
+  #pvBox.on video { position: absolute; left: 50%; top: 50%; object-fit: fill; transform-origin: center; }
+  .overlay { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; color: #d7e2da; font-size: 15px; pointer-events: none; }
+  .pos { font-size: 20px; font-variant-numeric: tabular-nums; font-weight: bold; margin: 0 6px; }
+  #editPanel.nocur .ctl { opacity: .45; pointer-events: none; }
+
+  /* 一覧 */
+  .item { padding: 7px 6px; border-bottom: 1px solid var(--line); }
+  .item.cur { background: var(--accent-soft); border-radius: 8px; }
+  .item .top { display: flex; align-items: baseline; gap: 8px; }
+  .item .num { flex: none; color: var(--sub); font-size: 13px; width: 1.6em; text-align: right; }
+  .item .name { flex: 1; min-width: 0; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .meta { flex: none; color: var(--sub); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .item .ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 5px 0 0 2.2em; }
+  .item .lbl { color: var(--sub); font-size: 12px; }
+  .empty { color: var(--sub); font-size: 13px; padding: 10px 4px; margin: 0; }
+  .foot { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 6px; }
+  button.big { width: 100%; padding: 10px; font-size: 16px; margin-top: 8px; }
+
+  /* 書き出しの画面(「書き出しへ進む」で開く) */
+  dialog#outDlg { border: none; border-radius: 14px; padding: 18px 20px; width: min(780px, 94vw); background: var(--card); color: var(--text); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+  dialog#outDlg::backdrop { background: rgba(0, 0, 0, .45); }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 13px; color: var(--sub); }
+  .chk { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .bar { height: 14px; background: var(--bar); border-radius: 7px; overflow: hidden; }
   .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
-  .err { color: var(--warn); font-weight: bold; }
-  .field { display: flex; flex-direction: column; gap: 4px; }
-  .field label { font-size: 13px; color: var(--sub); }
-  @media (max-width: 560px) { .pos { font-size: 18px; } }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td, th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+
+  /* 画面が狭いときは、縦に並べる */
+  @media (max-width: 980px) {
+    .app { height: auto; }
+    .work { grid-template-columns: 1fr; }
+    #stage { flex: none; height: 50vh; }
+    #vidPanel, #clipPanel { max-height: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>動画カット・圧縮</h1>
-  <p class="lead">動画から必要な部分を切り出して、解像度と画質を下げて小さく保存します。複数の動画を、順番につなげて1つにもできます(rm・wmv・flv などもOK)。元の動画は、そのまま残ります。</p>
+<div class="app">
+  <header class="top">
+    <h1>動画カット・圧縮</h1>
+    <button class="primary" id="pick">動画を選ぶ…</button>
+    <input type="text" id="pathInput" placeholder="またはファイルの場所を貼り付けて Enter(まとめて選ぶときは、左のボタンで Ctrl を押しながらクリック)">
+    <span class="err" id="loadErr"></span>
+  </header>
 
-  <section>
-    <h2><span>1</span>動画を選ぶ</h2>
-    <div class="row">
-      <button class="primary" id="pick">動画を選ぶ…(まとめて選べます)</button>
-      <input type="text" id="pathInput" class="grow" placeholder="またはファイルの場所を貼り付けて Enter">
-    </div>
-    <table id="vidTbl" hidden>
-      <thead><tr><th>動画</th><th>長さ</th><th>大きさ</th><th></th></tr></thead>
-      <tbody id="vids"></tbody>
-    </table>
-    <p class="hint" id="vidHint" hidden>選んだ動画は、何も指定しなければ、まるごと使います。一部だけ使うときは、「範囲を決める」で選びます。</p>
-    <div class="err" id="loadErr"></div>
-  </section>
+  <div class="work">
+    <!-- 2. 範囲を決める(作業の中心) -->
+    <section class="panel nocur" id="editPanel">
+      <div class="phead">
+        <h2><span class="no">2</span>範囲を決める<small id="curName"></small></h2>
+        <label class="chk hint" style="margin:0"><input type="checkbox" id="pvOn" checked> 仕上がりの形で見る</label>
+      </div>
+      <div id="stage">
+        <div id="pvBox"><video id="v" controls preload="metadata"></video></div>
+        <p class="overlay" id="emptyMsg">上の「動画を選ぶ」で、動画を選んでください(1本でも、まとめて複数でも選べます)。</p>
+        <p class="overlay" id="noPlay" hidden>この動画は、ブラウザでは再生できないようです。下の時間の欄に、直接入力してください。</p>
+      </div>
+      <div class="row ctl">
+        <button id="pvPlay" title="スペースキーでも、再生・停止できます">▶ 再生 / 停止</button>
+        <span class="sep"></span>
+        <button data-seek="-600">−10分</button>
+        <button data-seek="-60">−1分</button>
+        <button data-seek="-10">−10秒</button>
+        <button data-seek="-1">−1秒</button>
+        <span class="pos" id="pos">0:00:00</span>
+        <button data-seek="1">+1秒</button>
+        <button data-seek="10">+10秒</button>
+        <button data-seek="60">+1分</button>
+        <button data-seek="600">+10分</button>
+      </div>
+      <div class="row ctl">
+        <button id="setStart">ここを開始 (I)</button>
+        <input type="text" class="time" id="startT" value="0:00:00" aria-label="開始">
+        <span>〜</span>
+        <input type="text" class="time" id="endT" value="" aria-label="終了">
+        <button id="setEnd">ここを終了 (O)</button>
+        <span class="hint" style="margin:0 0 0 6px">キー: ← →(1秒)、Shift+← →(10秒)、スペース(再生・停止)</span>
+      </div>
+      <div class="row ctl">
+        <label class="hint" style="margin:0" for="addRot">向き</label>
+        <select id="addRot"></select>
+        <label class="hint" style="margin:0" for="addFit">枠への入れ方</label>
+        <select id="addFit"></select>
+        <span class="sep"></span>
+        <button class="primary" id="add">この範囲を追加</button>
+        <button id="addWhole">この動画を、まるごと追加</button>
+      </div>
+    </section>
 
-  <section id="editor" hidden>
-    <h2><span>2</span>範囲を決める<span style="background:none;color:var(--sub);width:auto;font-size:14px;margin-left:8px" id="curName"></span></h2>
-    <div id="pvBox"><video id="v" controls preload="metadata"></video></div>
-    <div class="row">
-      <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="pvOn" checked> 仕上がりの形で見る</label>
-      <button id="pvPlay">再生 / 一時停止</button>
-    </div>
-    <p class="hint" id="pvHint">いまの「向き」「枠への入れ方」で、書き出したときの画面の形に近い見た目を出します(見た目の確認用です。実際の書き出しと、少しずれることがあります)。再生は、「再生 / 一時停止」か、スペースキーでできます。</p>
-    <p class="hint" id="noPlay" hidden>この動画は、ブラウザでは再生できないようです。下の時間の欄に、直接入力してください。</p>
-    <div class="row">
-      <button data-seek="-600">−10分</button>
-      <button data-seek="-60">−1分</button>
-      <button data-seek="-10">−10秒</button>
-      <button data-seek="-1">−1秒</button>
-      <span class="pos" id="pos">0:00:00</span>
-      <button data-seek="1">+1秒</button>
-      <button data-seek="10">+10秒</button>
-      <button data-seek="60">+1分</button>
-      <button data-seek="600">+10分</button>
-    </div>
-    <div class="row">
-      <button id="setStart">ここを開始にする (I)</button>
-      <input type="text" class="time" id="startT" value="0:00:00" aria-label="開始">
-      <span>〜</span>
-      <input type="text" class="time" id="endT" value="" aria-label="終了">
-      <button id="setEnd">ここを終了にする (O)</button>
-    </div>
-    <div class="row">
-      <label class="hint" for="addRot">向き:</label>
-      <select id="addRot">
-        <option value="0" selected>そのまま</option>
-        <option value="90">右に90度</option>
-        <option value="270">左に90度</option>
-        <option value="180">180度</option>
-      </select>
-      <label class="hint" for="addFit">枠への入れ方:</label>
-      <select id="addFit"></select>
-      <button class="primary" id="add">この範囲を追加</button>
-      <button id="addWhole">この動画を、まるごと追加</button>
-    </div>
-    <p class="hint">キー操作: ← → で1秒、Shift を押しながらで10秒動かせます。スペースで再生・停止。向きは、追加したあとでも、下の一覧で変えられます。</p>
-  </section>
+    <div class="right">
+      <!-- 1. 選んだ動画 -->
+      <section class="panel" id="vidPanel">
+        <div class="phead"><h2><span class="no">1</span>選んだ動画</h2></div>
+        <div class="list" id="vids"></div>
+      </section>
 
-  <section id="listSec" hidden>
-    <h2><span>3</span>書き出す内容の一覧</h2>
-    <table>
-      <thead><tr><th>#</th><th>動画</th><th>開始</th><th>終了</th><th>長さ</th><th>向き</th><th>枠への入れ方</th><th></th></tr></thead>
-      <tbody id="segs"></tbody>
-    </table>
-    <p class="hint" id="total"></p>
-  </section>
+      <!-- 3. 書き出す内容の一覧(作業の中心) -->
+      <section class="panel" id="clipPanel">
+        <div class="phead"><h2><span class="no">3</span>書き出す内容の一覧</h2></div>
+        <div class="list" id="segs"></div>
+        <div class="foot">
+          <p class="hint" id="total" style="margin:0"></p>
+          <button class="primary big" id="openOut" disabled>書き出しへ進む…</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
 
-  <section id="outSec" hidden>
-    <h2><span>4</span>小さくして書き出す</h2>
-    <div class="row">
-      <div class="field"><label for="height">解像度(縦の画素数)</label>
-        <select id="height">
-          <option value="0">元のまま</option>
-          <option value="1080">1080p</option>
-          <option value="720" selected>720p(おすすめ)</option>
-          <option value="540">540p</option>
-          <option value="480">480p</option>
-          <option value="360">360p</option>
-        </select></div>
-      <div class="field"><label for="crf">画質(小さいほど、ファイルが小さくなります)</label>
-        <select id="crf">
-          <option value="22">高画質(あまり小さくならない)</option>
-          <option value="26" selected>ふつう(おすすめ)</option>
-          <option value="29">小さめ</option>
-          <option value="32">とても小さい(荒くなる)</option>
-        </select></div>
-      <div class="field"><label for="speed">処理の速さ</label>
-        <select id="speed">
-          <option value="fast" selected>速い(ファイルは、少し大きくなる)</option>
-          <option value="normal">ふつう</option>
-          <option value="slow">じっくり(時間がかかるが、小さくなる)</option>
-        </select></div>
-      <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="audio" checked> 音も残す</label>
-      <label class="field" style="flex-direction:row;align-items:center;gap:6px;margin-top:18px"><input type="checkbox" id="merge" checked> 順番につなげて、1つのファイルにする</label>
-    </div>
-    <div class="row">
-      <div class="field grow"><label for="outDir">保存先のフォルダ</label>
-        <div class="row" style="margin:0"><input type="text" id="outDir" class="grow"><button id="pickDir">変更…</button></div></div>
-    </div>
-    <div class="row">
-      <button class="primary" id="run">書き出す</button>
-      <button id="cancel" hidden>中止</button>
-    </div>
-    <div id="prog" hidden>
-      <p id="progText"></p>
-      <div class="bar"><div id="progBar"></div></div>
-    </div>
-    <div class="err" id="runErr"></div>
-    <table id="resTbl" hidden>
-      <thead><tr><th>書き出したファイル</th><th>大きさ</th><th></th></tr></thead>
-      <tbody id="res"></tbody>
-    </table>
-    <p class="hint" id="resSum"></p>
-  </section>
-</main>
+<!-- 4. 書き出し(別の画面) -->
+<dialog id="outDlg">
+  <div class="phead">
+    <h2><span class="no">4</span>小さくして書き出す</h2>
+    <button id="closeOut">閉じる</button>
+  </div>
+  <p class="hint" id="outSummary" style="margin-top:0"></p>
+  <div class="row" style="margin-top:10px">
+    <div class="field"><label for="height">解像度(縦の画素数)</label>
+      <select id="height">
+        <option value="0">元のまま</option>
+        <option value="1080">1080p</option>
+        <option value="720" selected>720p(おすすめ)</option>
+        <option value="540">540p</option>
+        <option value="480">480p</option>
+        <option value="360">360p</option>
+      </select></div>
+    <div class="field"><label for="crf">画質(小さいほど、ファイルが小さくなります)</label>
+      <select id="crf">
+        <option value="22">高画質(あまり小さくならない)</option>
+        <option value="26" selected>ふつう(おすすめ)</option>
+        <option value="29">小さめ</option>
+        <option value="32">とても小さい(荒くなる)</option>
+      </select></div>
+    <div class="field"><label for="speed">処理の速さ</label>
+      <select id="speed">
+        <option value="fast" selected>速い(ファイルは、少し大きくなる)</option>
+        <option value="normal">ふつう</option>
+        <option value="slow">じっくり(時間がかかるが、小さくなる)</option>
+      </select></div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <label class="chk"><input type="checkbox" id="audio" checked> 音も残す</label>
+    <label class="chk"><input type="checkbox" id="merge" checked> 順番につなげて、1つのファイルにする</label>
+  </div>
+  <div class="field" style="margin-top:10px"><label for="outDir">保存先のフォルダ</label>
+    <div class="row" style="margin:0"><input type="text" id="outDir" class="grow"><button id="pickDir">変更…</button></div></div>
+  <div class="row" style="margin-top:14px">
+    <button class="primary" id="run" style="padding:8px 22px">書き出す</button>
+    <button id="cancel" hidden>中止</button>
+  </div>
+  <div id="prog" hidden style="margin-top:10px">
+    <p id="progText" style="margin:0 0 6px"></p>
+    <div class="bar"><div id="progBar"></div></div>
+  </div>
+  <div class="err" id="runErr" style="margin-top:6px"></div>
+  <table id="resTbl" hidden style="margin-top:8px">
+    <thead><tr><th>書き出したファイル</th><th>大きさ</th><th></th></tr></thead>
+    <tbody id="res"></tbody>
+  </table>
+  <p class="hint" id="resSum"></p>
+</dialog>
 
 <script>
 (() => {
@@ -175,7 +225,9 @@
   let videos = []; // 読み込んだ動画
   let cur = null; // いま、プレビューで見ている動画
   let clips = []; // 書き出す内容(動画の一部、または動画まるごと)。auto: 何も指定しないで、まるごと使う印
+  let pv = null; // 一覧の「見る」で選んだ素材({ clip })。なければ、「範囲を追加」の横の設定で見る
   let timer = null;
+  let running = false;
 
   const api = async (path, body) => {
     const r = await fetch(path, {
@@ -202,8 +254,12 @@
   const ROTS = [[0, 'そのまま'], [90, '右に90度'], [270, '左に90度'], [180, '180度']];
   // 枠への入れ方(つなげたときの画面の大きさに対して)。大きくすると、はみ出た所は切れる
   const FITS = [['fit', '枠に収める(100%)'], ['110', '110%'], ['120', '120%'], ['130', '130%'], ['140', '140%'], ['150', '150%'], ['fill', '枠いっぱい']];
-  FITS.forEach(([n, t]) => $('addFit').add(new Option(t, n)));
-  const button = (label, fn, off) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; return b; };
+  const FITS_SHORT = FITS.map(([n, t]) => [n, n === 'fit' ? '収める' : n === 'fill' ? 'いっぱい' : t]);
+  const fillSelect = (sel, list) => list.forEach(([n, t]) => sel.add(new Option(t, n)));
+  fillSelect($('addRot'), ROTS);
+  fillSelect($('addFit'), FITS);
+  const button = (label, fn, off, cls) => { const b = document.createElement('button'); b.textContent = label; b.disabled = !!off; b.onclick = fn; b.className = cls || 'sm'; return b; };
+  const span = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };
 
   setInterval(() => api('/api/ping', {}).catch(() => {}), 5000);
   api('/api/ping', {}).catch(() => {});
@@ -220,10 +276,7 @@
     }
     if (!last) return;
     if (first) $('outDir').value = dirOf(list[0].file); // 保存先は、初めは、1本目の動画と同じフォルダ
-    $('resTbl').hidden = true;
-    $('resSum').textContent = '';
     showVideo(last);
-    renderVideos();
     renderClips();
   }
   function removeVideo(i) {
@@ -232,22 +285,26 @@
     if (cur === i) {
       cur = null;
       if (videos.length) showVideo(videos[videos.length - 1]);
-      else { v.removeAttribute('src'); v.load(); $('editor').hidden = true; }
+      else { v.removeAttribute('src'); v.load(); updateEditor(); }
     }
     renderVideos();
     renderClips();
   }
   function renderVideos() {
-    $('vidTbl').hidden = !videos.length;
-    $('vidHint').hidden = !videos.length;
-    $('vids').innerHTML = '';
+    const box = $('vids');
+    box.innerHTML = '';
+    if (!videos.length) { box.appendChild(span('empty', 'まだ選んでいません。上の「動画を選ぶ」で選びます。選んだ動画は、何も指定しなければ、まるごと使います。')); return; }
     videos.forEach((i) => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td></td><td>${fmt(i.duration)}</td><td>${i.width}×${i.height} / ${bytes(i.size)}</td><td></td>`;
-      tr.firstChild.textContent = i.name + (i === cur ? '(いま見ている動画)' : '');
-      if (i === cur) tr.style.background = 'var(--accent-soft)';
-      tr.lastChild.append(button('範囲を決める', () => showVideo(i), i === cur), ' ', button('削除', () => removeVideo(i)));
-      $('vids').appendChild(tr);
+      const it = document.createElement('div');
+      it.className = 'item' + (i === cur ? ' cur' : '');
+      const top = document.createElement('div');
+      top.className = 'top';
+      top.style.alignItems = 'center';
+      top.append(span('name', i.name), span('meta', fmt(i.duration)), button(i === cur ? '見ています' : '範囲を決める', () => showVideo(i), i === cur), button('外す', () => removeVideo(i)));
+      it.title = `${i.file}
+${i.width}×${i.height} / ${bytes(i.size)}`;
+      it.append(top);
+      box.appendChild(it);
     });
   }
   $('pick').onclick = async () => {
@@ -267,6 +324,13 @@
   });
 
   // ---- 2. 範囲を決める ----
+  function updateEditor() {
+    $('editPanel').classList.toggle('nocur', !cur);
+    $('emptyMsg').hidden = !!cur;
+    $('curName').textContent = cur ? cur.name : '';
+    if (!cur) $('noPlay').hidden = true;
+    updatePreview();
+  }
   function showVideo(i) {
     if (cur !== i) {
       cur = i;
@@ -274,18 +338,16 @@
       v.src = `/video?t=${token}&f=${encodeURIComponent(i.file)}`;
     }
     pv = null; // 「見る」で見ていた素材の設定は、動画を変えたら、やめる
-    $('curName').textContent = i.name;
     $('startT').value = '0:00:00';
     $('endT').value = fmt(i.duration);
-    $('editor').hidden = false;
     renderVideos();
-    updatePreview();
+    updateEditor();
   }
 
   // ---- 仕上がりの形のプレビュー(見た目の確認用。書き出しと同じ決まりで、枠の形と、向き・大きさを計算する) ----
-  let pv = null; // 一覧の「見る」で選んだ素材({ clip })。なければ、「範囲を追加」の横の設定で見る
   const even = (x) => Math.max(2, Math.round(x / 2) * 2);
   const turned = (i, rot) => (rot === 90 || rot === 270 ? { w: i.height, h: i.width } : { w: i.width, h: i.height });
+  const videoOf = (c) => videos.find((x) => x.file === c.file) || cur;
   function frameFor(sizes, height) { // サーバーの frameFor と同じ
     const land = sizes.filter((z) => z.w >= z.h);
     const t = (land.length ? land : sizes).reduce((a, b) => (b.h > a.h ? b : a));
@@ -295,21 +357,22 @@
   function updatePreview() {
     const box = $('pvBox');
     const on = $('pvOn').checked && !!cur;
-    $('pvPlay').hidden = $('pvHint').hidden = !on;
-    v.controls = !on;
+    v.controls = !on && !!cur;
     if (!on) { box.className = ''; box.removeAttribute('style'); v.removeAttribute('style'); return; }
-    const s = pv && clips.includes(pv.clip) ? { rot: pv.clip.rotate || 0, fit: pv.clip.fit || 'fit' } : { rot: Number($('addRot').value), fit: $('addFit').value };
-    const viaClip = s !== null && pv && clips.includes(pv.clip);
+    const viaClip = !!(pv && clips.includes(pv.clip));
+    const s = viaClip ? { rot: pv.clip.rotate || 0, fit: pv.clip.fit || 'fit' } : { rot: Number($('addRot').value), fit: $('addFit').value };
+    const vid = viaClip ? videoOf(pv.clip) : cur;
     // 書き出し後の画面の大きさ: つなげるなら、一覧の全部(まだ追加していないときは、追加したものを入れて)から決める。つなげないなら、その素材の大きさ
-    let sizes = clips.map((c) => { const vid = videos.find((x) => x.file === c.file); return vid ? turned(vid, c.rotate || 0) : null; }).filter(Boolean);
-    if (!viaClip) sizes = clips.filter((c) => !(c.file === cur.file && c.auto)).map((c) => turned(videos.find((x) => x.file === c.file) || cur, c.rotate || 0)).concat([turned(cur, s.rot)]);
-    const own = viaClip ? turned(videos.find((x) => x.file === pv.clip.file) || cur, s.rot) : turned(cur, s.rot);
-    const fr = frameFor($('merge').checked && sizes.length > 1 ? sizes : [own], Number($('height').value));
-    const vid = viaClip ? videos.find((x) => x.file === pv.clip.file) || cur : cur;
+    const sizes = viaClip
+      ? clips.map((c) => turned(videoOf(c), c.rotate || 0))
+      : clips.filter((c) => !(c.file === cur.file && c.auto)).map((c) => turned(videoOf(c), c.rotate || 0)).concat([turned(cur, s.rot)]);
+    const fr = frameFor($('merge').checked && sizes.length > 1 ? sizes : [turned(vid, s.rot)], Number($('height').value));
+    // 枠を、プレビューの場所いっぱいに(縦横の比はそのまま)
+    const sw = $('stage').clientWidth, sh = $('stage').clientHeight, a = fr.W / fr.H;
+    const bw = Math.min(sw, sh * a), bh = bw / a;
     box.className = 'on';
-    box.style.width = `min(100%, ${(52 * fr.W / fr.H).toFixed(2)}vh)`;
-    box.style.aspectRatio = `${fr.W} / ${fr.H}`;
-    const bw = box.clientWidth, bh = box.clientHeight;
+    box.style.width = bw + 'px';
+    box.style.height = bh + 'px';
     const r = turned(vid, s.rot);
     const fitScale = Math.min(bw / r.w, bh / r.h);
     const sc = s.fit === 'fill' ? Math.max(bw / r.w, bh / r.h) : s.fit === 'fit' ? fitScale : (fitScale * Number(s.fit)) / 100;
@@ -319,10 +382,10 @@
   }
   $('pvOn').onchange = updatePreview;
   $('pvPlay').onclick = () => (v.paused ? v.play() : v.pause());
-  ['addRot', 'addFit'].forEach((id) => $(id).addEventListener('change', () => { pv = null; updatePreview(); }));
+  ['addRot', 'addFit'].forEach((id) => $(id).addEventListener('change', () => { pv = null; renderClips(); }));
   $('height').addEventListener('change', updatePreview);
-  if (window.ResizeObserver) new ResizeObserver(() => { if ($('pvBox').className === 'on') updatePreview(); }).observe($('editor'));
-  v.addEventListener('error', () => ($('noPlay').hidden = false));
+  if (window.ResizeObserver) new ResizeObserver(() => updatePreview()).observe($('stage'));
+  v.addEventListener('error', () => { if (cur) $('noPlay').hidden = false; });
   v.addEventListener('timeupdate', () => ($('pos').textContent = fmt(v.currentTime)));
   v.addEventListener('seeked', () => ($('pos').textContent = fmt(v.currentTime)));
   document.querySelectorAll('[data-seek]').forEach((b) => (b.onclick = () => {
@@ -360,52 +423,69 @@
   };
 
   // ---- 3. 書き出す内容の一覧 ----
+  function totalText() {
+    const sum = clips.reduce((a, c) => a + (c.end - c.start), 0);
+    const joined = $('merge').checked && clips.length > 1;
+    const one = new Set(clips.map((c) => c.file)).size === 1 ? videos.find((x) => x.file === clips[0].file) : null;
+    return clips.length
+      ? `${clips.length} 件 / 合計 ${fmt(sum)}${one ? `(元の動画の ${(sum / one.duration * 100).toFixed(1)}%)` : ''}。${joined ? '上から順につなげて、1つのファイルで保存されます。' : '1つずつ、別のファイルとして保存されます。'}${joined && new Set(clips.map((c) => c.file + '|' + c.rotate + '|' + c.fit)).size > 1 ? '動画や向きが違うものは、大きさをそろえます(横長に合わせます)。' : ''}`
+      : '';
+  }
   function renderClips() {
-    $('listSec').hidden = $('outSec').hidden = !clips.length;
-    $('segs').innerHTML = '';
-    let sum = 0;
+    if (pv && !clips.includes(pv.clip)) pv = null;
+    const box = $('segs');
+    box.innerHTML = '';
+    if (!clips.length) box.appendChild(span('empty', videos.length ? '書き出す内容がありません。左で範囲を追加するか、「この動画を、まるごと追加」を押します。' : '動画を選ぶと、ここに並びます。'));
     clips.forEach((c, i) => {
-      sum += c.end - c.start;
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td></td><td>${fmt(c.start)}</td><td>${fmt(c.end)}</td><td>${fmt(c.end - c.start)}</td><td></td><td></td><td></td>`;
-      tr.children[1].textContent = c.name + (c.auto ? '(まるごと)' : '');
+      const it = document.createElement('div');
+      it.className = 'item' + (pv && pv.clip === c ? ' cur' : '');
+      const top = document.createElement('div');
+      top.className = 'top';
+      top.append(span('num', i + 1), span('name', c.name + (c.auto ? '(まるごと)' : '')), span('meta', `${fmt(c.start)}〜${fmt(c.end)}(${fmt(c.end - c.start)})`));
+      const ctrl = document.createElement('div');
+      ctrl.className = 'ctrl';
       const sel = document.createElement('select'); // この素材だけの向き
-      ROTS.forEach(([n, t]) => sel.add(new Option(t, n)));
+      sel.className = 'sm';
+      sel.title = '向き';
+      fillSelect(sel, ROTS);
       sel.value = String(c.rotate || 0);
       sel.onchange = () => { c.rotate = Number(sel.value); updatePreview(); };
-      tr.children[5].appendChild(sel);
       const fsel = document.createElement('select'); // この素材だけの、枠への入れ方
-      FITS.forEach(([n, t]) => fsel.add(new Option(t, n)));
+      fsel.className = 'sm';
+      fsel.title = '枠への入れ方';
+      fillSelect(fsel, FITS_SHORT);
       fsel.value = c.fit || 'fit';
       fsel.onchange = () => { c.fit = fsel.value; updatePreview(); };
-      tr.children[6].appendChild(fsel);
       const swap = (a, b) => { [clips[a], clips[b]] = [clips[b], clips[a]]; renderClips(); };
-      tr.lastChild.append(
+      ctrl.append(
+        span('lbl', '向き'), sel, span('lbl', '枠'), fsel,
         button('見る', () => {
           const vid = videos.find((x) => x.file === c.file);
           if (vid && vid !== cur) { showVideo(vid); v.addEventListener('loadedmetadata', () => (v.currentTime = c.start), { once: true }); }
           else v.currentTime = c.start;
           pv = { clip: c }; // この素材の向き・枠への入れ方で、仕上がりを見る
-          updatePreview();
-        }), ' ',
-        button('↑', () => swap(i, i - 1), i === 0), ' ',
-        button('↓', () => swap(i, i + 1), i === clips.length - 1), ' ',
+          renderClips();
+        }),
+        button('↑', () => swap(i, i - 1), i === 0),
+        button('↓', () => swap(i, i + 1), i === clips.length - 1),
         button('削除', () => { clips.splice(i, 1); renderClips(); }),
       );
-      $('segs').appendChild(tr);
+      it.append(top, ctrl);
+      box.appendChild(it);
     });
-    const joined = $('merge').checked && clips.length > 1;
-    const one = new Set(clips.map((c) => c.file)).size === 1 ? videos.find((x) => x.file === clips[0].file) : null;
-    $('total').textContent = clips.length
-      ? `合計 ${fmt(sum)}${one ? `(元の動画の ${(sum / one.duration * 100).toFixed(1)}%)` : ''}。${joined ? '上から順につなげて、1つのファイルで保存されます。' : '1つずつ、別のファイルとして保存されます。'}${joined && new Set(clips.map((c) => c.file + '|' + c.rotate + '|' + c.fit)).size > 1 ? '動画や向きが違うものは、大きさをそろえます(横長に合わせて、縦長は左右に黒い帯がつきます)。' : ''}`
-      : '';
+    $('total').textContent = totalText();
     $('merge').disabled = clips.length < 2;
-    $('run').disabled = !clips.length;
-    if (pv && !clips.includes(pv.clip)) pv = null;
+    if (!running) $('openOut').disabled = !clips.length;
     updatePreview();
   }
 
-  // ---- 4. 書き出す ----
+  // ---- 4. 書き出す(別の画面) ----
+  $('openOut').onclick = () => {
+    $('outSummary').textContent = totalText();
+    if (!running) $('run').disabled = !clips.length;
+    $('outDlg').showModal();
+  };
+  $('closeOut').onclick = () => $('outDlg').close();
   // 解像度・画質・速さ・音・つなげるの選択は、変えるたびに覚えておく
   const saveSettings = () => api('/api/settings', {
     height: Number($('height').value), crf: Number($('crf').value),
@@ -421,7 +501,7 @@
     renderClips();
   };
   ['height', 'crf', 'speed', 'audio'].forEach((id) => $(id).addEventListener('change', saveSettings));
-  $('merge').onchange = () => { renderClips(); saveSettings(); };
+  $('merge').onchange = () => { renderClips(); $('outSummary').textContent = totalText(); saveSettings(); };
 
   $('pickDir').onclick = async () => {
     try { const r = await api('/api/pickfolder', {}); if (r.dir) $('outDir').value = r.dir; } catch (e) { $('runErr').textContent = e.message; }
@@ -435,23 +515,28 @@
         height: Number($('height').value), crf: Number($('crf').value),
         audio: $('audio').checked, merge: $('merge').checked, speed: $('speed').value, outDir: $('outDir').value.trim(),
       });
+      running = true;
       poll();
     } catch (e) { $('runErr').textContent = e.message; }
   };
   $('cancel').onclick = () => api('/api/cancel', {});
 
-  // 書き出しの進み具合を、画面に出す
+  // 書き出しの進み具合を、画面に出す(書き出しの画面を閉じても、下のボタンに進み具合が出る)
   function poll() {
     clearInterval(timer);
     timer = setInterval(async () => {
       let s;
       try { s = await api('/api/status'); } catch { return; }
+      running = s.running;
       $('prog').hidden = false;
       $('cancel').hidden = !s.running;
       $('run').disabled = s.running;
       const pct = s.running ? s.percent : (s.error ? s.percent : 100);
       $('progBar').style.width = pct + '%';
-      $('progText').textContent = s.running ? (s.merging ? '1つのファイルにつなげています…' : `${s.index + 1} / ${s.total} 件目を書き出し中… ${Math.floor(s.percent)}%`) : (s.error ? '' : '完了しました');
+      const now = s.merging ? '1つのファイルにつなげています…' : `${s.index + 1} / ${s.total} 件目を書き出し中… ${Math.floor(s.percent)}%`;
+      $('progText').textContent = s.running ? now : (s.error ? '' : '完了しました');
+      $('openOut').disabled = false;
+      $('openOut').textContent = s.running ? `書き出し中: ${now}(押すと、くわしく見られます)` : (s.error ? '書き出しへ進む…(前回はエラーでした)' : '完了しました(押すと、結果を見られます)');
       $('res').innerHTML = '';
       s.results.forEach((r) => {
         const tr = document.createElement('tr');
@@ -476,6 +561,7 @@
   }
 
   document.addEventListener('keydown', (e) => {
+    if ($('outDlg').open) return; // 書き出しの画面を開いているときは、動画の操作はしない
     if (!cur || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox') return;
     const k = e.key;
     if (k === 'ArrowLeft' || k === 'ArrowRight') {
@@ -486,6 +572,9 @@
     else if (k === 'o' || k === 'O') $('setEnd').click();
   });
 
+  renderVideos();
+  renderClips();
+  updateEditor();
   api('/api/state').then((s) => { if (!s.ffmpeg) $('loadErr').textContent = 'ffmpeg が見つかりません。'; applySettings(s.settings); }).catch(() => {});
 })();
 </script>
