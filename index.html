@@ -57,7 +57,11 @@
   #hoverCv { display: block; border-radius: 4px; background: #111; }
   #hoverTm { color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 2px; }
   #bar #pvPlay { width: 44px; font-size: 16px; }
-  #seekBar { flex: 1; min-width: 120px; accent-color: var(--accent); cursor: pointer; }
+  /* 位置のバー(自作。マウスの位置と時間が、ぴったり合うように) */
+  #seekBar { flex: 1; min-width: 120px; height: 18px; position: relative; cursor: pointer; touch-action: none; }
+  #seekBar::before { content: ''; position: absolute; left: 0; right: 0; top: 7px; height: 4px; border-radius: 2px; background: var(--bar); }
+  #seekFill { position: absolute; left: 0; top: 7px; height: 4px; width: 0; border-radius: 2px; background: var(--accent); }
+  #seekKnob { position: absolute; top: 3px; left: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); transform: translateX(-50%); box-shadow: 0 0 0 2px var(--card); }
   #volBar { width: 90px; accent-color: var(--accent); cursor: pointer; }
   .tm { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--sub); }
   .pos { font-size: 20px; font-variant-numeric: tabular-nums; font-weight: bold; margin: 0 6px; }
@@ -118,7 +122,7 @@
       <div class="row ctl" id="bar">
         <button id="pvPlay" title="画面のクリックや、スペースキーでも、再生・停止できます">▶</button>
         <span class="tm" id="tmNow">0:00:00</span>
-        <input type="range" id="seekBar" min="0" max="1" step="0.1" value="0" aria-label="再生する位置">
+        <div id="seekBar" role="slider" aria-label="再生する位置" title="クリックか、つまんで動かすと、その位置に移ります"><div id="seekFill"></div><div id="seekKnob"></div></div>
         <span class="tm" id="tmAll">0:00:00</span>
         <button id="muteBtn" title="音を消す・戻す">🔊</button>
         <input type="range" id="volBar" min="0" max="1" step="0.05" value="1" aria-label="音の大きさ" title="音の大きさ">
@@ -141,7 +145,7 @@
         <span>〜</span>
         <input type="text" class="time" id="endT" value="" aria-label="終了">
         <button id="setEnd">ここを終了 (O)</button>
-        <span class="hint" style="margin:0 0 0 6px">キー: ← →(1秒)、Shift+← →(10秒)、スペース・画面クリック(再生・停止)</span>
+        <span class="hint" style="margin:0 0 0 6px">キー: ← →(10秒)、Shift+← →(1秒)、スペース・画面クリック(再生・停止)</span>
       </div>
       <div class="row ctl">
         <span class="hint" style="margin:0">向き</span>
@@ -399,8 +403,8 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
   let dragging = false;
   const syncBar = () => {
     const d = cur ? cur.duration : 0;
-    $('seekBar').max = d || 1;
-    if (!dragging) $('seekBar').value = v.currentTime || 0;
+    const p = d ? Math.min(1, Math.max(0, (v.currentTime || 0) / d)) * 100 : 0;
+    if (!dragging) { $('seekFill').style.width = p + '%'; $('seekKnob').style.left = p + '%'; }
     $('tmNow').textContent = fmt(v.currentTime || 0);
     $('tmAll').textContent = fmt(d);
   };
@@ -409,8 +413,26 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
   v.addEventListener('pause', syncPlay);
   v.addEventListener('ended', syncPlay);
   v.addEventListener('loadedmetadata', syncBar);
-  $('seekBar').addEventListener('input', () => { dragging = true; v.currentTime = Number($('seekBar').value); $('tmNow').textContent = fmt(v.currentTime); });
-  $('seekBar').addEventListener('change', () => { dragging = false; });
+  // バーの左端が0、右端が動画の終わり。マウスを乗せた時の小さい画面と、同じ計算にする
+  const barTime = (e) => { const r = $('seekBar').getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (cur ? cur.duration : 0); };
+  const seekTo = (t) => {
+    v.currentTime = t;
+    const p = cur && cur.duration ? (t / cur.duration) * 100 : 0;
+    $('seekFill').style.width = p + '%';
+    $('seekKnob').style.left = p + '%';
+    $('tmNow').textContent = fmt(t);
+    $('pos').textContent = fmt(t);
+  };
+  $('seekBar').addEventListener('pointerdown', (e) => {
+    if (!cur) return;
+    dragging = true;
+    $('seekBar').setPointerCapture(e.pointerId);
+    seekTo(barTime(e));
+  });
+  $('seekBar').addEventListener('pointermove', (e) => { if (dragging) seekTo(barTime(e)); });
+  const endDrag = () => { dragging = false; };
+  $('seekBar').addEventListener('pointerup', endDrag);
+  $('seekBar').addEventListener('pointercancel', endDrag);
   // 位置のバーにマウスを乗せると、その時間の画面を、バーの上に小さく出す(見えない、もう1つの動画で、その時間の絵を取る)
   const hv = document.createElement('video');
   hv.muted = true;
@@ -453,8 +475,8 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
   $('seekBar').addEventListener('mousemove', (e) => {
     if (!cur) return;
     if (hvSrc !== v.src) { hvSrc = v.src; hvOk = true; hvBusy = false; $('hoverCv').hidden = false; hv.src = v.src; }
-    const r = $('seekBar').getBoundingClientRect(), br = $('bar').getBoundingClientRect();
-    hoverT = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * cur.duration;
+    const br = $('bar').getBoundingClientRect();
+    hoverT = barTime(e);
     const tip = $('hoverTip');
     tip.hidden = false;
     $('hoverTm').textContent = fmt(hoverT);
@@ -656,11 +678,12 @@ ${i.width}×${i.height} / ${bytes(i.size)}`;
 
   document.addEventListener('keydown', (e) => {
     if ($('outDlg').open) return; // 書き出しの画面を開いているときは、動画の操作はしない
-    if (!cur || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'checkbox') return;
+    const ae = document.activeElement;
+    if (!cur || /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName) && ae.type !== 'checkbox' && ae.type !== 'range') return;
     const k = e.key;
     if (k === 'ArrowLeft' || k === 'ArrowRight') {
       e.preventDefault();
-      v.currentTime = Math.min(cur.duration, Math.max(0, v.currentTime + (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 10 : 1)));
+      v.currentTime = Math.min(cur.duration, Math.max(0, v.currentTime + (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 1 : 10)));
     } else if (k === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
     else if (k === 'i' || k === 'I') $('setStart').click();
     else if (k === 'o' || k === 'O') $('setEnd').click();
